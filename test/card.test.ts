@@ -26,7 +26,7 @@ const verdict: Verdict = {
 
 const base: CardInput = {
   score,
-  window: { days: 30, widened: false, sessions: 6, prompts: 30 },
+  window: { days: 30, sessions: 6, prompts: 30 },
   ragePrompts: 2,
   secrets: 3,
 };

@@ -62,7 +62,7 @@ Each sub-score is computed per session, then averaged with every session weighte
 | Discipline | 20% | starts at 100 and loses points for bare retries and error pastes (150 × their share), runs of more than two nudges, prompts in bypass-permissions mode, and rage |
 | Leverage | 10% | for you as a whole: global instructions (35), projects with a `CLAUDE.md` or `AGENTS.md` (up to 35), three or more skills or commands (15), hooks (15) |
 
-A sub-score that doesn't apply is left out and the other weights are rescaled, so Codex users aren't scored on signals Codex doesn't record. You need at least 5 sessions with two or more prompts, and 30 prompts in total. The window is the last 30 days, widened to 90 days and then to all history if there isn't enough.
+A sub-score that doesn't apply is left out and the other weights are rescaled, so Codex users aren't scored on signals Codex doesn't record. You need at least 5 sessions with two or more prompts, and 30 prompts in total. By default it reads all the history on disk; `--days 30` scores just the last month. Claude Code deletes transcripts after 30 days unless you raise `cleanupPeriodDays` in its settings, so your Claude history may be shorter than you think.
 
 ### Archetypes
 
@@ -99,7 +99,7 @@ amidumb label [options]      label your own sessions (blind) to sanity-check the
 amidumb calibrate            how well the rubric ranks your labelled sessions
 amidumb survey [options]     record kinds and keys in your transcripts (no content)
 
---days <n|all>     window to read (default: 30, widened to 90 or all if too little data)
+--days <n|all>     window to read (default: all history on disk)
 --raw              the full table of raw signals instead of the score
 --sessions         one row per session, with titles (stays local)
 --sample <n>       print n random detected prompts to check detection (stays local)

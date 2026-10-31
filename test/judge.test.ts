@@ -49,7 +49,7 @@ const userScore = scoreUser(rowsOf(persona), persona.leverage);
 if (!userScore) throw new Error('persona must score');
 const context: JudgeContext = {
   score: userScore,
-  window: { days: 30, widened: false, sessions: 6, prompts: 48 },
+  window: { days: 30, sessions: 6, prompts: 48 },
   ragePrompts: 2,
   secrets: 1,
 };

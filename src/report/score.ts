@@ -9,15 +9,13 @@ function bar(score: number): string {
 
 export interface WindowInfo {
   days: number | 'all';
-  /** The default 30-day window was widened to reach the minimum data. */
-  widened: boolean;
   sessions: number;
   prompts: number;
 }
 
 export function describeWindow(w: WindowInfo): string {
   const span = w.days === 'all' ? 'all history' : `last ${w.days} ${w.days === 1 ? 'day' : 'days'}`;
-  return `${span}${w.widened ? ' (widened: not enough in the last 30 days)' : ''}, ${w.sessions} sessions, ${w.prompts} prompts`;
+  return `${span}, ${w.sessions} sessions, ${w.prompts} prompts`;
 }
 
 export function renderScore(score: UserScore, window: WindowInfo): string {

@@ -32,7 +32,7 @@ Usage
   amidumb survey [options]     record kinds and keys in your transcripts (no content)
 
 Options
-  --days <n|all>     window to read (default: 30, widened to 90 or all if too little data)
+  --days <n|all>     window to read (default: all history on disk)
   --raw              the full table of raw signals instead of the score
   --sessions         one row per session, with titles (stays local)
   --sample <n>       print n random detected prompts to check detection (stays local)
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     case undefined:
       return report(roots, days, values);
     case 'survey': {
-      const since = days === 'all' ? undefined : Date.now() - (days ?? 30) * 86_400_000;
+      const since = typeof days === 'number' ? Date.now() - days * 86_400_000 : undefined;
       return void console.log(await renderSurvey(roots, since));
     }
     case 'label':

@@ -63,7 +63,7 @@ When building, inspect formats with scripts that print only keys, record types a
 ## MVP scope
 
 - Claude Code and Codex only.
-- Last 30 days.
+- All history on disk by default (`--days N` to narrow; decided 2026-11-01). Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is raised.
 - Terminal output.
 - Card sections for a **rage meter** ("wtf", all-caps prompts, "still broken" loops) and a **secret leak count** ("you've pasted N API keys into Claude"). Both need only regexes, no LLM.
 
