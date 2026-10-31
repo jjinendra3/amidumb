@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { roast } from '../src/judge/flow';
 import { maskForCard } from '../src/judge/mask';
 import { buildJudgePrompt, type JudgeContext } from '../src/judge/prompt';
-import { detectJudge, type Exec, parseJsonText, runJudge } from '../src/judge/run';
+import { detectJudge, type Exec, parseJsonText, runJudge, unknownFlag } from '../src/judge/run';
 import { buildSample, MAX_CHARS, MAX_ITEMS, type Sample } from '../src/judge/sample';
 import { JudgeError, resolveJudgeOutput } from '../src/judge/schema';
 import { scoreUser } from '../src/score/rubric';
@@ -295,5 +295,82 @@ describe('judge prompt', () => {
     expect(text).toContain('[p1]');
     expect(text).not.toContain('A1b2C3d4E5');
     expect(text.length / 4).toBeLessThan(32_000);
+  });
+});
+
+describe('older CLIs', () => {
+  type Call = { args: readonly string[]; input: string };
+  /** Fails once per flag in `unsupported`, the way the real CLI would, then succeeds. */
+  const oldCli = (
+    cli: 'claude' | 'codex',
+    unsupported: string[],
+    ok: (args: readonly string[]) => string,
+  ) => {
+    const calls: Call[] = [];
+    const exec: Exec = async (_cmd, args, { input }) => {
+      calls.push({ args, input });
+      const bad = unsupported.find((f) => args.includes(f));
+      if (bad) {
+        return cli === 'claude'
+          ? { code: 1, stdout: '', stderr: `error: unknown option '${bad}'\n`, timedOut: false }
+          : {
+              code: 2,
+              stdout: '',
+              stderr: `error: unexpected argument '${bad}' found\n`,
+              timedOut: false,
+            };
+      }
+      return { code: 0, stdout: ok(args), stderr: '', timedOut: false };
+    };
+    return { exec, calls };
+  };
+
+  it('reads the flag name from both CLIs', () => {
+    expect(unknownFlag("error: unknown option '--safe-mode'")).toBe('--safe-mode');
+    expect(unknownFlag("error: unexpected argument '--ephemeral' found")).toBe('--ephemeral');
+    expect(unknownFlag('some other failure')).toBeUndefined();
+  });
+
+  it('drops only the flags an older claude does not know', async () => {
+    const { exec, calls } = oldCli('claude', ['--safe-mode', '--no-session-persistence'], () =>
+      JSON.stringify({ structured_output: { a: 1 } }),
+    );
+    expect(await runJudge('claude', 'PROMPT', exec)).toEqual({ a: 1 });
+    expect(calls).toHaveLength(3);
+    const last = calls.at(-1)?.args ?? [];
+    expect(last).not.toContain('--safe-mode');
+    expect(last).not.toContain('--no-session-persistence');
+    expect(last).toEqual(expect.arrayContaining(['--json-schema', '--disallowedTools']));
+    expect(calls.at(-1)?.input).toBe('PROMPT');
+  });
+
+  it('moves the schema into the prompt when structured output is unsupported', async () => {
+    const { exec, calls } = oldCli('claude', ['--json-schema'], () =>
+      JSON.stringify({ result: 'Sure: {"b":2}' }),
+    );
+    expect(await runJudge('claude', 'PROMPT', exec)).toEqual({ b: 2 });
+    expect(calls.at(-1)?.input).toMatch(
+      /^PROMPT\n\nReply with only a JSON object matching this JSON Schema:\n\{/,
+    );
+  });
+
+  it('says to update when a required flag is unknown', async () => {
+    const { exec } = oldCli('claude', ['--output-format'], () => '{}');
+    await expect(runJudge('claude', 'x', exec)).rejects.toThrow(
+      /claude CLI is too old.*--output-format.*claude update/,
+    );
+  });
+
+  it('drops unknown optional flags for codex too', async () => {
+    const { exec, calls } = oldCli('codex', ['--ephemeral', '--output-schema'], (args) => {
+      writeFileSync(args[args.indexOf('--output-last-message') + 1] as string, '{"c":3}');
+      return '';
+    });
+    expect(await runJudge('codex', 'PROMPT', exec)).toEqual({ c: 3 });
+    expect(calls).toHaveLength(3);
+    expect(calls.at(-1)?.args).toEqual(
+      expect.arrayContaining(['exec', '--skip-git-repo-check', '-']),
+    );
+    expect(calls.at(-1)?.input).toContain('JSON Schema');
   });
 });

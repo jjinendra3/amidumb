@@ -39,15 +39,18 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "vitest run",
-    "prepublishOnly": "pnpm typecheck && pnpm lint && pnpm test && pnpm build"
+    "prepublishOnly": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm smoke",
+    "smoke": "node scripts/smoke.mjs"
   },
   "packageManager": "pnpm@10.29.3",
   "dependencies": {
     "@resvg/resvg-js": "2.6.2",
+    "cross-spawn": "7.0.6",
     "picocolors": "1.1.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
+    "@types/cross-spawn": "6.0.6",
     "@types/node": "^18.19.130",
     "satori": "0.63.2",
     "tsup": "^9.0.0",

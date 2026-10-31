@@ -1,11 +1,12 @@
-import { spawn } from 'node:child_process';
 import { accessSync, constants, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import crossSpawn from 'cross-spawn';
 import { JUDGE_JSON_SCHEMA, JudgeError } from './schema';
 
 // Runs the judge on the user's own CLI and plan: no API keys, no network calls of ours.
-// Both runs are ephemeral, so the judge never shows up in the transcripts it judges.
+// Both runs are ephemeral where the CLI supports it, so the judge never shows up in the
+// transcripts it judges.
 
 export const JUDGE_CLIS = ['claude', 'codex'] as const;
 export type JudgeCli = (typeof JUDGE_CLIS)[number];
@@ -15,6 +16,10 @@ const CLAUDE_BRIEF = 'Follow the instructions in the input and reply with the JS
 /** The judge only reads the prompt; it gets no tools. */
 const CLAUDE_DENIED_TOOLS =
   'Bash Edit Write Read Glob Grep WebFetch WebSearch Task Agent NotebookEdit TodoWrite';
+const UPDATE_HINT: Record<JudgeCli, string> = {
+  claude: 'run `claude update`',
+  codex: 'update it the way you installed it, e.g. `npm i -g @openai/codex@latest`',
+};
 
 export interface ExecResult {
   code: number | null;
@@ -29,9 +34,13 @@ export type Exec = (
   opts: { input: string; cwd: string; timeoutMs: number },
 ) => Promise<ExecResult>;
 
+/**
+ * cross-spawn, not child_process.spawn: on Windows, npm installs both CLIs as `.cmd`
+ * shims, which spawn can't run without a shell, and a shell would mangle the JSON args.
+ */
 export const runProcess: Exec = (cmd, args, { input, cwd, timeoutMs }) =>
   new Promise((resolve) => {
-    const child = spawn(cmd, [...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = crossSpawn(cmd, [...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
@@ -39,10 +48,10 @@ export const runProcess: Exec = (cmd, args, { input, cwd, timeoutMs }) =>
       timedOut = true;
       child.kill('SIGTERM');
     }, timeoutMs);
-    child.stdout.on('data', (d) => {
+    child.stdout?.on('data', (d) => {
       stdout += d;
     });
-    child.stderr.on('data', (d) => {
+    child.stderr?.on('data', (d) => {
       stderr += d;
     });
     child.on('error', (error) => {
@@ -53,8 +62,8 @@ export const runProcess: Exec = (cmd, args, { input, cwd, timeoutMs }) =>
       clearTimeout(timer);
       resolve({ code, stdout, stderr, timedOut });
     });
-    child.stdin.on('error', () => {});
-    child.stdin.end(input);
+    child.stdin?.on('error', () => {});
+    child.stdin?.end(input);
   });
 
 /** The first judge CLI on PATH, Claude Code first. */
@@ -64,7 +73,7 @@ export function detectJudge(env: NodeJS.ProcessEnv = process.env): JudgeCli | un
 
 function onPath(name: string, env: NodeJS.ProcessEnv): boolean {
   const exts = process.platform === 'win32' ? ['.cmd', '.exe', ''] : [''];
-  for (const dir of (env.PATH ?? '').split(delimiter)) {
+  for (const dir of (env.PATH ?? env.Path ?? '').split(delimiter)) {
     for (const ext of exts) {
       try {
         accessSync(join(dir, name + ext), constants.X_OK);
@@ -73,6 +82,63 @@ function onPath(name: string, env: NodeJS.ProcessEnv): boolean {
     }
   }
   return false;
+}
+
+/**
+ * A command-line flag. Optional flags are dropped one by one when an older CLI says it
+ * doesn't know them; a required one it doesn't know means the CLI is too old.
+ */
+interface Flag {
+  name: string;
+  value?: string;
+  required?: boolean;
+  /** Dropping this flag loses structured output: the schema goes into the prompt instead. */
+  schema?: boolean;
+}
+
+const UNKNOWN_FLAG = /(?:unknown option|unexpected argument|unrecognized option)\s*'?(--?[\w-]+)/i;
+
+export function unknownFlag(output: string): string | undefined {
+  return UNKNOWN_FLAG.exec(output)?.[1];
+}
+
+const SCHEMA_IN_PROMPT = `\n\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(JUDGE_JSON_SCHEMA)}`;
+
+/** Runs `cmd` with `flags`, dropping optional flags the CLI doesn't know and retrying. */
+async function runWithFallback(
+  cli: JudgeCli,
+  lead: readonly string[],
+  flags: readonly Flag[],
+  trail: readonly string[],
+  prompt: string,
+  cwd: string,
+  exec: Exec,
+): Promise<{ res: ExecResult; schemaInPrompt: boolean }> {
+  let active = [...flags];
+  for (;;) {
+    const schemaInPrompt = flags.some((f) => f.schema && !active.includes(f));
+    const args = [
+      ...lead,
+      ...active.flatMap((f) => (f.value === undefined ? [f.name] : [f.name, f.value])),
+      ...trail,
+    ];
+    const res = await exec(cli, args, {
+      input: schemaInPrompt ? prompt + SCHEMA_IN_PROMPT : prompt,
+      cwd,
+      timeoutMs: TIMEOUT_MS,
+    });
+    if (res.timedOut)
+      throw new JudgeError(`${cli} took longer than ${TIMEOUT_MS / 60_000} minutes`);
+    const unknown = res.code === 0 ? undefined : unknownFlag(`${res.stderr}\n${res.stdout}`);
+    if (!unknown) return { res, schemaInPrompt };
+    const flag = active.find((f) => f.name === unknown);
+    if (!flag || flag.required) {
+      throw new JudgeError(
+        `your ${cli} CLI is too old for amidumb (it doesn't know ${unknown}); ${UPDATE_HINT[cli]}`,
+      );
+    }
+    active = active.filter((f) => f !== flag);
+  }
 }
 
 /** Sends the prompt and returns the judge's parsed JSON (not yet validated). */
@@ -93,23 +159,21 @@ export async function runJudge(
 }
 
 async function runClaude(prompt: string, cwd: string, exec: Exec): Promise<unknown> {
-  const res = await exec(
+  const { res } = await runWithFallback(
     'claude',
+    ['-p', CLAUDE_BRIEF],
     [
-      '-p',
-      CLAUDE_BRIEF,
-      '--safe-mode',
-      '--no-session-persistence',
-      '--output-format',
-      'json',
-      '--json-schema',
-      JSON.stringify(JUDGE_JSON_SCHEMA),
-      '--disallowedTools',
-      CLAUDE_DENIED_TOOLS,
+      { name: '--output-format', value: 'json', required: true },
+      { name: '--safe-mode' },
+      { name: '--no-session-persistence' },
+      { name: '--json-schema', value: JSON.stringify(JUDGE_JSON_SCHEMA), schema: true },
+      { name: '--disallowedTools', value: CLAUDE_DENIED_TOOLS },
     ],
-    { input: prompt, cwd, timeoutMs: TIMEOUT_MS },
+    [],
+    prompt,
+    cwd,
+    exec,
   );
-  if (res.timedOut) throw timeout('claude');
   let out: Record<string, unknown>;
   try {
     out = JSON.parse(res.stdout);
@@ -120,7 +184,9 @@ async function runClaude(prompt: string, cwd: string, exec: Exec): Promise<unkno
     const detail = typeof out.result === 'string' ? `: ${out.result.slice(0, 300)}` : '';
     throw new JudgeError(`claude returned an error (${String(out.subtype ?? 'unknown')})${detail}`);
   }
-  if (out.structured_output !== undefined) return out.structured_output;
+  if (out.structured_output !== undefined && out.structured_output !== null) {
+    return out.structured_output;
+  }
   if (typeof out.result === 'string') return parseJsonText(out.result, 'claude');
   throw new JudgeError('claude returned no structured output');
 }
@@ -129,25 +195,22 @@ async function runCodex(prompt: string, cwd: string, exec: Exec): Promise<unknow
   const schemaFile = join(cwd, 'schema.json');
   const outFile = join(cwd, 'last-message.txt');
   writeFileSync(schemaFile, JSON.stringify(JUDGE_JSON_SCHEMA));
-  const res = await exec(
+  const { res } = await runWithFallback(
     'codex',
+    ['exec'],
     [
-      'exec',
-      '--ephemeral',
-      '--skip-git-repo-check',
-      '--sandbox',
-      'read-only',
-      '--color',
-      'never',
-      '--output-schema',
-      schemaFile,
-      '--output-last-message',
-      outFile,
-      '-',
+      { name: '--skip-git-repo-check', required: true },
+      { name: '--output-last-message', value: outFile, required: true },
+      { name: '--ephemeral' },
+      { name: '--sandbox', value: 'read-only' },
+      { name: '--color', value: 'never' },
+      { name: '--output-schema', value: schemaFile, schema: true },
     ],
-    { input: prompt, cwd, timeoutMs: TIMEOUT_MS },
+    ['-'],
+    prompt,
+    cwd,
+    exec,
   );
-  if (res.timedOut) throw timeout('codex');
   if (res.code !== 0) throw failure('codex', res);
   let text: string;
   try {
@@ -168,10 +231,6 @@ export function parseJsonText(text: string, cli: string): unknown {
     } catch {}
   }
   throw new JudgeError(`${cli} did not reply with JSON`);
-}
-
-function timeout(cli: string): JudgeError {
-  return new JudgeError(`${cli} took longer than ${TIMEOUT_MS / 60_000} minutes`);
 }
 
 function failure(cli: string, res: ExecResult): JudgeError {

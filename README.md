@@ -123,7 +123,8 @@ amidumb survey [options]     record kinds and keys in your transcripts (no conte
 ```sh
 pnpm install
 pnpm typecheck && pnpm lint && pnpm test
-pnpm build && node dist/cli.js --dry-run
+pnpm build && pnpm smoke   # end to end with a fake judge, no tokens
+node dist/cli.js --dry-run
 ```
 
 ## License

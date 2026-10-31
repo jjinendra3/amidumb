@@ -6,7 +6,7 @@ export function openFile(path: string): void {
     process.platform === 'darwin'
       ? ['open', [path]]
       : process.platform === 'win32'
-        ? ['cmd', ['/c', 'start', '""', path]]
+        ? ['explorer', [path]]
         : ['xdg-open', [path]];
   try {
     const child = spawn(cmd, args, { stdio: 'ignore', detached: true });

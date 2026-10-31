@@ -4,7 +4,7 @@
 
 It's a viral side project, nothing more. The goal is reach: ship in 1–2 weekends, launch on X/HN with my own card as the demo.
 
-Status: **no code yet.** Planned in a Claude Code session on 2026-10-26 (`~/Repos`, session `b08464ae-a5a2-477e-9179-c228959484ad`). Next step: scaffold, then build the collectors and fixed metrics first, so real numbers exist before the LLM part.
+Status: **v0.1.0 built, not yet published** (2026-11-01). Collectors, rubric v2, judge, terminal card and PNG card are done; `pnpm smoke` runs the built CLI end to end with a fake judge, and CI runs it on Linux, macOS and Windows. Originally planned in a Claude Code session on 2026-10-26 (`~/Repos`, session `b08464ae-a5a2-477e-9179-c228959484ad`).
 
 ## Decisions already made
 
