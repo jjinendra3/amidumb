@@ -50,6 +50,7 @@ beforeAll(async () => {
         content: [
           { type: 'text', text: 'Renaming now.' },
           { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'pnpm test' } },
+          { type: 'tool_use', id: 't5', name: 'Edit', input: { file_path: 'src/api/user.ts' } },
         ],
       },
     },
@@ -157,6 +158,7 @@ describe('readClaudeSessions', () => {
     expect(ofKind(s, 'slash_command').map((e) => e.name)).toEqual(['plan']);
     expect(ofKind(s, 'tool_call')).toEqual([
       expect.objectContaining({ name: 'Bash', command: 'pnpm test' }),
+      expect.objectContaining({ name: 'Edit', paths: ['src/api/user.ts'] }),
     ]);
     expect(ofKind(s, 'assistant_text').map((e) => e.text)).toEqual(['Renaming now.']);
     expect(ofKind(s, 'mode').map((e) => [e.permission, e.plan])).toEqual([

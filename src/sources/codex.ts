@@ -80,7 +80,21 @@ export async function readCodexFile(file: string): Promise<Session | undefined> 
       case 'response_item':
         if (payload.type === 'function_call' || payload.type === 'custom_tool_call') {
           const name = str(payload.name);
-          if (name) events.push({ kind: 'tool_call', ts, name, command: commandOf(payload) });
+          if (name === 'apply_patch') {
+            // A patch is an edit, not a shell command.
+            const patch = typeof payload.input === 'string' ? payload.input : '';
+            events.push({ kind: 'tool_call', ts, name, paths: patchPaths(patch) });
+          } else if (name) {
+            const command = commandOf(payload);
+            const paths = command?.includes('apply_patch') ? patchPaths(command) : [];
+            events.push({
+              kind: 'tool_call',
+              ts,
+              name,
+              command,
+              paths: paths.length ? paths : undefined,
+            });
+          }
         }
         break;
     }
@@ -132,6 +146,13 @@ function pushPrompt(
 function textBlocks(content: unknown): string[] {
   if (!Array.isArray(content)) return [];
   return content.flatMap((b) => (isRecord(b) && typeof b.text === 'string' ? [b.text] : []));
+}
+
+const PATCH_FILE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
+
+/** Files named in an apply_patch body. */
+function patchPaths(patch: string): string[] {
+  return [...patch.matchAll(PATCH_FILE)].map((m) => (m[1] ?? '').trim()).filter(Boolean);
 }
 
 function commandOf(payload: JsonRecord): string | undefined {

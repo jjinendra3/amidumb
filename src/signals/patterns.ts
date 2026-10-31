@@ -36,6 +36,14 @@ export function hasAcceptance(text: string): boolean {
   return ACCEPTANCE.test(text);
 }
 
+/**
+ * How many of the three things a spec pins down this prompt has: where (a path or
+ * symbol), a constraint, and done-criteria. 2+ reads as a spec, 1 as a clear goal.
+ */
+export function specMarkers(text: string): number {
+  return [namesPathOrSymbol(text), hasConstraint(text), hasAcceptance(text)].filter(Boolean).length;
+}
+
 /** Log-shaped lines: `Error:` prefixes, *Error/*Exception names, stack frames, tool codes. */
 const ERROR_LINE =
   /(\b([Ee]rror|ERROR|[Ww]arning|WARN|[Ff]atal|FATAL|panic)(\[[\w-]+\])?:|\b[A-Z][a-zA-Z]+(Error|Exception)\b|\bTraceback\b|^\s+at\s+\S+|\bERR_[A-Z_]+|\berror TS\d+|npm ERR!|exit code \d+|\bFAIL(ED)?\b|\S+\.\w+:\d+:\d+)/;
@@ -74,6 +82,34 @@ export function isFixIt(text: string): boolean {
   return FIX_IT.test(text);
 }
 
+const FIX_IT_ALL = new RegExp(FIX_IT.source, 'gi');
+const FILLER =
+  /\b(please|pls|plz|again|now|still|just|it|this|that|the|same|ok|okay|so|and|but|bro|man|dude|yo|ugh|lol|can you|could you)\b/gi;
+
+/**
+ * What a fix-it prompt says beyond "fix it": the text with fix-it phrases, filler words
+ * and punctuation removed. Empty-ish means the user added no new information.
+ */
+export function fixItRemainder(text: string): string {
+  return text
+    .replace(FIX_IT_ALL, ' ')
+    .replace(FILLER, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+const QUESTION_START =
+  /^(why|what|how|where|which|who|when|does|is|are|was|were|explain|(can|could|would) you (explain|tell|clarify|walk me|help me understand))\b/i;
+/** "can you add X?" is a request, not a question. */
+const REQUEST_START = /^(can|could|would|will) you\b|^(please|pls)\b/i;
+
+/** Asks for information rather than for work. */
+export function isQuestion(text: string): boolean {
+  const t = text.trim();
+  if (QUESTION_START.test(t)) return true;
+  return t.endsWith('?') && !REQUEST_START.test(t);
+}
+
 const CONTINUE =
   /^(please |pls |ok,? |okay,? )?(continue|go on|keep going|carry on|resume|next|more|and\??)[\s.!]*(please|pls)?[\s.!]*$/i;
 
@@ -83,7 +119,7 @@ export function isContinue(text: string): boolean {
 }
 
 const APPROVAL =
-  /^(yes|yep|yeah|yup|y|ok|okay|sure|go|go ahead|do it|lgtm|looks good|sounds good|approved?|ship it|proceed|perfect|great|nice|cool)\b[\s\S]{0,40}$/i;
+  /^(yes|yep|yeah|yup|y|ok|okay|sure|go|go ahead|go for it|do it|do that|pls do|please do|lgtm|looks good|sounds good|approved?|ship it|proceed|perfect|great|nice|cool)\b[\s\S]{0,40}$/i;
 
 /** A short approval. Good after a plan, empty on a loop; context decides which. */
 export function isApproval(text: string): boolean {
@@ -93,9 +129,24 @@ export function isApproval(text: string): boolean {
 const CORRECTION =
   /^(no\b|nope|nah|wrong|that'?s (wrong|not)|not (that|this|what)|wait\b|stop\b|actually\b|instead\b|undo|revert)/i;
 
-/** Pushes back on what the agent just did. */
+/** Redirects that can sit anywhere in a follow-up, not just at the start. */
+const REDIRECT =
+  /\b(instead|rather than|i meant|i said|not what i (asked|meant|wanted|said)|that'?s not (it|right|what)|you (missed|forgot|broke|ignored|skipped)|wrong (file|place|approach|one))\b/i;
+
+/** Pushes back on what the agent just did. Only meaningful after the agent has acted. */
 export function isCorrection(text: string): boolean {
-  return CORRECTION.test(text.trim());
+  return CORRECTION.test(text.trim()) || REDIRECT.test(text);
+}
+
+/** Wishes about the result ("make sure it works") are not reports of it. */
+const DESIRE =
+  /\b(make sure|ensure|so that|until|should|must|check (that|if|whether))\b[^.\n]{0,30}/gi;
+const OBSERVATION =
+  /\b(i (tested|checked|tried|ran|verified|confirmed)\b|i (see|saw|get|got|noticed) (the|an?|this|that|no|nothing|\d)|tested (it|this|that|locally|on)|works (now|fine|locally|for me|on)|(is|it'?s|its) working|on my (end|machine)|in the browser|on (staging|prod|production|preprod)|when i (run|click|open|load|try|go)|now (it|the \w+) (shows|works|renders|fails|breaks|crashes|returns|throws)|(it|that|this) (works|worked)( now| fine)?[.!]*\s*$)/im;
+
+/** Reports what the human saw when they ran or used the result: they checked it. */
+export function isObservation(text: string): boolean {
+  return OBSERVATION.test(text.replace(DESIRE, ' '));
 }
 
 const VERIFY_ASK =

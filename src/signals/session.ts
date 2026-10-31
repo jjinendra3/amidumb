@@ -8,13 +8,16 @@ import {
   isCorrection,
   isErrorOnly,
   isFixIt,
+  isObservation,
   isRage,
   isVerifyAsk,
   isVerifyCommand,
   looksPasted,
   namesPathOrSymbol,
+  specMarkers,
 } from './patterns';
 import { countSecrets } from './secrets';
+import { classifyTurns, TURN_CLASSES, type TurnClass } from './turns';
 
 /** Prompt-level classifiers counted per session, in report order. */
 export const PROMPT_FLAGS = {
@@ -35,6 +38,14 @@ export type PromptFlag = keyof typeof PROMPT_FLAGS;
 /** Gaps longer than this between events don't count as active time. */
 const IDLE_GAP_MS = 15 * 60_000;
 const PLAN_TOOLS = new Set(['EnterPlanMode', 'ExitPlanMode']);
+const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'apply_patch']);
+/** Writes that aren't code: prose files, and agent plans and memory under ~/.claude or ~/.codex. */
+const NOT_CODE = /(\.(md|mdx|txt|rst)$)|(^|\/)\.(claude|codex)\//i;
+
+/** Unknown paths count as code, so formats without paths keep their old behaviour. */
+function touchesCode(paths: readonly string[] | undefined): boolean {
+  return !paths?.length || paths.some((p) => !NOT_CODE.test(p));
+}
 
 /** Numbers only: nothing here may contain prompt text, paths or titles. */
 export interface SessionSignals {
@@ -64,6 +75,18 @@ export interface SessionSignals {
   toolErrors: number;
   compactions: number;
   secrets: number;
+  /** Prompts per turn class, judged against the agent turn before each. */
+  turns: Record<TurnClass, number>;
+  /** Class of the first prompt; undefined when the session has none. */
+  opening?: TurnClass;
+  /** Longest run of consecutive nudges ("continue", "ok" with nothing proposed). */
+  longestNudgeRun: number;
+  /** Tool calls that change code files (not docs, plans or agent memory). */
+  editCalls: number;
+  /** Spec markers (where, constraint, done-criteria) in the opening prompt, 0-3. */
+  openingMarkers: number;
+  /** Prompts reporting what the human saw when running the result: they checked it. */
+  observed: number;
 }
 
 export function computeSessionSignals(session: Session): SessionSignals {
@@ -89,11 +112,14 @@ export function computeSessionSignals(session: Session): SessionSignals {
   let toolErrors = 0;
   let compactions = 0;
   let secrets = 0;
+  let editCalls = 0;
+  const texts: string[] = [];
 
   for (const event of session.events) {
     switch (event.kind) {
       case 'prompt': {
         lengths.push(event.text.length);
+        texts.push(event.text);
         promptsByPermission[permission] = (promptsByPermission[permission] ?? 0) + 1;
         for (const key of Object.keys(PROMPT_FLAGS) as PromptFlag[]) {
           if (PROMPT_FLAGS[key](event.text)) flags[key]++;
@@ -116,6 +142,12 @@ export function computeSessionSignals(session: Session): SessionSignals {
       case 'tool_call':
         toolCalls++;
         if (PLAN_TOOLS.has(event.name)) planUsed = true;
+        if (
+          (EDIT_TOOLS.has(event.name) || event.command?.includes('apply_patch')) &&
+          touchesCode(event.paths)
+        ) {
+          editCalls++;
+        }
         if (event.command !== undefined) {
           shellCalls++;
           if (isVerifyCommand(event.command)) verifyCommands++;
@@ -141,8 +173,22 @@ export function computeSessionSignals(session: Session): SessionSignals {
     }
   }
 
+  const classified = classifyTurns(session);
+  const turns = Object.fromEntries(TURN_CLASSES.map((c) => [c, 0])) as Record<TurnClass, number>;
+  let nudgeRun = 0;
+  let longestNudgeRun = 0;
+  let observed = 0;
+  for (const [i, { cls }] of classified.entries()) {
+    turns[cls]++;
+    nudgeRun = cls === 'nudge' ? nudgeRun + 1 : 0;
+    longestNudgeRun = Math.max(longestNudgeRun, nudgeRun);
+    const text = texts[i] ?? '';
+    // "still broken: total is 0 with a coupon" means they ran it and looked.
+    if (isObservation(text) || (cls === 'correct' && isFixIt(text))) observed++;
+  }
+
   return {
-    id: hashId(`${session.tool}:${session.id}`),
+    id: sessionHash(session),
     tool: session.tool,
     client: session.client,
     startedAt: session.startedAt,
@@ -165,7 +211,18 @@ export function computeSessionSignals(session: Session): SessionSignals {
     toolErrors,
     compactions,
     secrets,
+    turns,
+    opening: classified[0]?.cls,
+    longestNudgeRun,
+    editCalls,
+    openingMarkers: texts[0] === undefined ? 0 : specMarkers(texts[0]),
+    observed,
   };
+}
+
+/** Stable, non-reversible session key shared by --json rows and labels. */
+export function sessionHash(session: Pick<Session, 'tool' | 'id'>): string {
+  return hashId(`${session.tool}:${session.id}`);
 }
 
 export function hashId(id: string): string {

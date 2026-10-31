@@ -20,7 +20,14 @@ export type SessionEvent =
       images: number;
     }
   | { kind: 'assistant_text'; ts?: number; text: string }
-  | { kind: 'tool_call'; ts?: number; name: string; command?: string }
+  | {
+      kind: 'tool_call';
+      ts?: number;
+      name: string;
+      command?: string;
+      /** Files the call targets (read or written), when the format says. */
+      paths?: string[];
+    }
   | { kind: 'tool_error'; ts?: number }
   | { kind: 'interrupt'; ts?: number; duringTool: boolean }
   | { kind: 'tool_rejected'; ts?: number; by: 'user' | 'policy' }

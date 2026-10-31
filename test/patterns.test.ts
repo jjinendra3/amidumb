@@ -7,11 +7,13 @@ import {
   isCorrection,
   isErrorOnly,
   isFixIt,
+  isObservation,
   isRage,
   isVerifyAsk,
   isVerifyCommand,
   looksPasted,
   namesPathOrSymbol,
+  specMarkers,
 } from '../src/signals/patterns';
 
 const cases: Array<[string, (t: string) => boolean, string[], string[]]> = [
@@ -124,4 +126,33 @@ describe('isVerifyCommand', () => {
   it.each(['ls src', 'git status', 'cat package.json', 'mkdir tests'])('ignores %j', (c) =>
     expect(isVerifyCommand(c)).toBe(false),
   );
+});
+
+describe('isObservation', () => {
+  it.each([
+    'I tested it locally, the modal still opens twice',
+    'when I click save nothing happens',
+    'it works now',
+    'I get a 500 on the cart endpoint',
+    'now the button shows but the list is empty',
+    'checked on staging, looks right',
+  ])('matches %j', (t) => expect(isObservation(t)).toBe(true));
+
+  it.each([
+    'make sure it works on mobile',
+    'I get it, go ahead',
+    'add a test for the coupon path',
+    'it should work offline too',
+  ])('ignores %j', (t) => expect(isObservation(t)).toBe(false));
+});
+
+describe('specMarkers', () => {
+  it('counts where, constraint and done-criteria', () => {
+    expect(specMarkers('add a logout button')).toBe(0);
+    expect(specMarkers('add a logout button to src/Header.tsx')).toBe(1);
+    expect(specMarkers("add a logout button to src/Header.tsx, don't touch styles")).toBe(2);
+    expect(
+      specMarkers("add logout to src/Header.tsx, don't touch styles, done when the e2e passes"),
+    ).toBe(3);
+  });
 });

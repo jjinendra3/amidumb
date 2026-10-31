@@ -1,30 +1,33 @@
 import { parseArgs } from 'node:util';
 import { version } from '../package.json';
+import { labelsPath, loadLabels } from './label/store';
+import { runLabeling } from './label/ui';
+import { load, loadForScoring } from './pipeline';
+import { calibrate, renderCalibration } from './report/calibrate';
+import { describeWindow, renderScore } from './report/score';
 import { renderSurvey } from './report/survey';
 import { renderAggregate, renderLeverage, renderSample, renderSessions } from './report/table';
+import { MIN_PROMPTS, MIN_SESSIONS, scoreSession, scoreUser } from './score/rubric';
 import { type AggregateSignals, aggregate } from './signals/aggregate';
-import { readLeverage } from './signals/leverage';
-import { computeSessionSignals } from './signals/session';
-import {
-  type AgentTool,
-  clipToWindow,
-  defaultRoots,
-  readAllSessions,
-  type Session,
-  type SourceRoots,
-} from './sources';
+import { sessionHash } from './signals/session';
+import { type AgentTool, defaultRoots, type Session, type SourceRoots } from './sources';
 
 const HELP = `amidumb: your AI coding transcripts, judged.
 
 Usage
-  amidumb [options]          raw signals for your Claude Code and Codex sessions
-  amidumb survey [options]   record kinds and keys in your transcripts (no content)
+  amidumb [options]            your direction score, from Claude Code and Codex sessions
+  amidumb label [options]      label your own sessions (blind) to sanity-check the rubric
+  amidumb calibrate            how well the rubric ranks your labelled sessions
+  amidumb survey [options]     record kinds and keys in your transcripts (no content)
 
 Options
-  --days <n|all>     window to read (default 30)
+  --days <n|all>     window to read (default: 30, widened to 90 or all if too little data)
+  --raw              the full table of raw signals instead of the score
   --sessions         one row per session, with titles (stays local)
   --sample <n>       print n random detected prompts to check detection (stays local)
   --json             numbers only, no text, titles or paths: safe to share
+  --limit <n>        label: sessions per run (default 40)
+  --relabel          label: include sessions you already labelled
   --claude-dir <p>   Claude Code transcripts (default ~/.claude/projects)
   --codex-dir <p>    Codex transcripts (default ~/.codex/sessions)
   -h, --help
@@ -38,11 +41,13 @@ async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
-      days: { type: 'string', default: '30' },
+      days: { type: 'string' },
       raw: { type: 'boolean' },
       sessions: { type: 'boolean' },
       sample: { type: 'string' },
       json: { type: 'boolean' },
+      limit: { type: 'string' },
+      relabel: { type: 'boolean' },
       'claude-dir': { type: 'string' },
       'codex-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
@@ -53,24 +58,39 @@ async function main(): Promise<void> {
   if (values.help) return void console.log(HELP);
   if (values.version) return void console.log(version);
 
-  const since = parseSince(values.days);
+  const days = parseDays(values.days);
   const defaults = defaultRoots();
   const roots: SourceRoots = {
     'claude-code': values['claude-dir'] ?? defaults['claude-code'],
     codex: values['codex-dir'] ?? defaults.codex,
   };
 
-  if (positionals[0] === 'survey') return void console.log(await renderSurvey(roots, since));
-  if (positionals.length > 0) throw new UsageError(`unknown command: ${positionals[0]}`);
+  const [command, ...rest] = positionals;
+  if (rest.length > 0) throw new UsageError(`unexpected argument: ${rest[0]}`);
+  switch (command) {
+    case undefined:
+      return report(roots, days, values);
+    case 'survey': {
+      const since = days === 'all' ? undefined : Date.now() - (days ?? 30) * 86_400_000;
+      return void console.log(await renderSurvey(roots, since));
+    }
+    case 'label':
+      return label(roots, days, parseCount(values.limit ?? '40'), Boolean(values.relabel));
+    case 'calibrate':
+      return calibration(roots);
+    default:
+      throw new UsageError(`unknown command: ${command}`);
+  }
+}
 
+async function report(
+  roots: SourceRoots,
+  days: number | 'all' | undefined,
+  values: { raw?: boolean; json?: boolean; sessions?: boolean; sample?: string },
+): Promise<void> {
   const started = Date.now();
-  const all = await readAllSessions(roots, since);
-  const sessions = all
-    .filter((s) => s.origin === 'interactive')
-    .map((s) => clipToWindow(s, since))
-    .filter((s) => s.events.some((e) => e.kind === 'prompt'));
-  const rows = sessions.map(computeSessionSignals);
-  const leverage = readLeverage(sessions.flatMap((s) => (s.cwd ? [s.cwd] : [])));
+  const { all, sessions, rows, leverage, window } = await loadForScoring(roots, days);
+  const score = scoreUser(rows, leverage);
 
   const columns: [string, AggregateSignals][] = TOOLS.filter((t) =>
     rows.some((r) => r.tool === t),
@@ -78,25 +98,36 @@ async function main(): Promise<void> {
   if (columns.length > 1) columns.push(['all', aggregate(rows)]);
 
   if (values.json) {
-    const report = {
-      schema: 1,
+    const json = {
+      schema: 2,
       version,
       generatedAt: new Date().toISOString(),
-      windowDays: since === undefined ? 'all' : Number(values.days),
+      window,
+      score: score ?? null,
       leverage,
       aggregate: Object.fromEntries(columns),
       sessions: rows,
     };
-    return void console.log(JSON.stringify(report, null, 2));
+    return void console.log(JSON.stringify(json, null, 2));
   }
 
   if (rows.length === 0) {
-    console.log(`No sessions found in the last ${values.days} days under:`);
+    console.log('No sessions found under:');
     for (const root of Object.values(roots)) console.log(`  ${root}`);
     return;
   }
 
-  console.log(renderAggregate(columns));
+  if (values.raw) {
+    console.log(renderAggregate(columns));
+  } else if (score) {
+    console.log(renderScore(score, window));
+  } else {
+    console.log(
+      `Not enough data to score: need ${MIN_SESSIONS} sessions with 2+ prompts and ${MIN_PROMPTS} prompts.\n` +
+        `Found ${describeWindow(window)}. Raw signals:\n`,
+    );
+    console.log(renderAggregate(columns));
+  }
   console.log(`\n${renderLeverage(leverage)}`);
   if (values.sessions) {
     console.log(
@@ -117,15 +148,54 @@ async function main(): Promise<void> {
             .join(', ')}`
         : ''),
   );
-  if (!values.raw)
-    console.error('scoring is not built yet: these are the raw signals it will use.');
+}
+
+async function label(
+  roots: SourceRoots,
+  days: number | 'all' | undefined,
+  limit: number,
+  relabel: boolean,
+): Promise<void> {
+  if (!process.stdin.isTTY) throw new UsageError('label needs an interactive terminal');
+  const path = labelsPath();
+  const store = loadLabels(path);
+  const { sessions } = await loadForScoring(roots, days);
+  const candidates = sessions
+    .filter((s) => s.events.filter((e) => e.kind === 'prompt').length >= 2)
+    .filter((s) => relabel || !store.labels[sessionHash(s)])
+    .map((s) => ({ s, key: Math.random() }))
+    .sort((a, b) => a.key - b.key)
+    .slice(0, limit)
+    .map(({ s }) => s);
+  if (candidates.length === 0) {
+    console.log('Nothing left to label in this window. Try --days all or --relabel.');
+    return;
+  }
+  const labelled = await runLabeling(candidates, store, path);
+  console.log(
+    `\nLabelled ${labelled} sessions (${Object.keys(store.labels).length} in total), saved to ${path}.`,
+  );
+  console.log('Run `amidumb calibrate` to see how the rubric ranks them.');
+}
+
+async function calibration(roots: SourceRoots): Promise<void> {
+  const store = loadLabels(labelsPath());
+  const labelled = Object.keys(store.labels).length;
+  if (labelled === 0) {
+    console.log('No labels yet. Run `amidumb label` first.');
+    return;
+  }
+  const { rows } = await load(roots, 'all');
+  const scores = new Map(rows.map((r) => [r.id, scoreSession(r)]));
+  const matched = Object.keys(store.labels).filter((id) => scores.has(id)).length;
+  console.log(renderCalibration(calibrate(store.labels, scores), labelled, matched));
 }
 
 class UsageError extends Error {}
 
-function parseSince(days: string | undefined): number | undefined {
-  if (days === 'all') return undefined;
-  return Date.now() - parseCount(days ?? '30') * 86_400_000;
+function parseDays(days: string | undefined): number | 'all' | undefined {
+  if (days === undefined || days === 'all') return days;
+  return parseCount(days);
 }
 
 function parseCount(value: string): number {

@@ -73,6 +73,12 @@ beforeAll(async () => {
       name: 'exec_command',
       arguments: '{"cmd":"ls"}',
     }),
+    rec('response_item', {
+      type: 'custom_tool_call',
+      name: 'apply_patch',
+      input:
+        '*** Begin Patch\n*** Update File: src/a.ts\n@@\n-a\n+b\n*** Add File: docs/notes.md\n+hi\n*** End Patch',
+    }),
     rec('event_msg', { type: 'turn_aborted', reason: 'interrupted' }),
     turnContext({ sandbox_policy: { type: 'danger-full-access' }, approval_policy: 'never' }),
     rec('compacted', { message: '' }),
@@ -120,12 +126,18 @@ describe('readCodexSessions', () => {
     expect(prompts.at(-1)?.images).toBe(1);
   });
 
+  it('treats apply_patch as an edit with paths, not a command', () => {
+    const patch = ofKind(byId('codex-main'), 'tool_call').find((c) => c.name === 'apply_patch');
+    expect(patch?.paths).toEqual(['src/a.ts', 'docs/notes.md']);
+    expect(patch?.command).toBeUndefined();
+  });
+
   it('extracts shell commands from exec_command and code-mode exec', () => {
-    expect(ofKind(byId('codex-main'), 'tool_call').map((c) => c.command)).toEqual([
-      'pnpm vitest run',
-      'await tools.exec_command({ cmd: "go test ./..." })',
-      'ls',
-    ]);
+    expect(
+      ofKind(byId('codex-main'), 'tool_call')
+        .filter((c) => c.name !== 'apply_patch')
+        .map((c) => c.command),
+    ).toEqual(['pnpm vitest run', 'await tools.exec_command({ cmd: "go test ./..." })', 'ls']);
   });
 
   it('reads interrupts, modes, compactions and agent text', () => {

@@ -198,7 +198,14 @@ function readAssistantRecord(
       events.push({ kind: 'assistant_text', ts, text: block.text });
     } else if (block.type === 'tool_use' && typeof block.name === 'string') {
       const input = isRecord(block.input) ? block.input : {};
-      events.push({ kind: 'tool_call', ts, name: block.name, command: str(input.command) });
+      const path = str(input.file_path) ?? str(input.notebook_path);
+      events.push({
+        kind: 'tool_call',
+        ts,
+        name: block.name,
+        command: str(input.command),
+        paths: path ? [path] : undefined,
+      });
     }
   }
 }
