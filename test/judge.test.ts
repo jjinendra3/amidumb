@@ -63,7 +63,7 @@ describe('buildSample', () => {
     expect(sample.items.length).toBeGreaterThan(100);
   });
 
-  it('covers every kind of turn, so receipts can go either way', () => {
+  it('covers every kind of turn, so the judge has material either way', () => {
     const classes = new Set(sample.items.map((i) => i.cls));
     for (const cls of ['specify', 'approve', 'retry', 'nudge', 'error_paste', 'correct']) {
       expect(classes).toContain(cls);
@@ -100,33 +100,31 @@ const smallSample: Sample = buildSample(
 describe('resolveJudgeOutput', () => {
   const good = {
     verdict: 'You steer well and verify rarely.',
-    roast: ['One', 'Two', 'Three', 'Four'],
-    receipts: [
-      { id: 'p1', why: 'a real spec' },
-      { id: '[p2]', why: 'a bare retry' },
-      { id: 'p1', why: 'duplicate' },
+    points: [
+      { text: 'Specs like a lawyer.', evidence: ['p1'] },
+      { text: 'Retries like a gambler.', evidence: ['[p2]', 'p999'] },
+      { text: 'Third point.', evidence: ['p1'] },
+      { text: 'Fourth point.', evidence: ['p2'] },
     ],
     habits: ['a', 'b', 'c'],
   };
 
-  it('quotes receipts from the local sample by id', () => {
+  it('keeps points backed by prompts that were sent, at most 3', () => {
     const v = resolveJudgeOutput(good, smallSample);
-    expect(v.receipts.map((r) => r.item.prompt)).toEqual([
-      smallSample.items[0]?.prompt,
-      smallSample.items[1]?.prompt,
-    ]);
-    expect(v.roast).toHaveLength(3);
+    expect(v.points).toEqual(['Specs like a lawyer.', 'Retries like a gambler.', 'Third point.']);
+    expect(v.habits).toHaveLength(3);
   });
 
-  it('rejects made-up receipt ids', () => {
+  it('drops points that cite only made-up ids, and fails below 2', () => {
     const fake = {
       ...good,
-      receipts: [
-        { id: 'p1', why: 'x' },
-        { id: 'p999', why: 'invented' },
+      points: [
+        { text: 'real', evidence: ['p1'] },
+        { text: 'invented', evidence: ['p999'] },
+        { text: 'no evidence', evidence: [] },
       ],
     };
-    expect(() => resolveJudgeOutput(fake, smallSample)).toThrow(/p999/);
+    expect(() => resolveJudgeOutput(fake, smallSample)).toThrow(/backed 1 points.*2 cited ids/);
   });
 
   it('rejects malformed output', () => {
@@ -136,7 +134,7 @@ describe('resolveJudgeOutput', () => {
 
   it('cuts over-long text instead of failing', () => {
     const v = resolveJudgeOutput({ ...good, verdict: 'v'.repeat(500) }, smallSample);
-    expect(v.verdict.length).toBe(200);
+    expect(v.verdict.length).toBe(140);
   });
 });
 
@@ -229,66 +227,62 @@ describe('detectJudge', () => {
 
 describe('roast flow', () => {
   const sample = buildSample(mixed);
-  const base = {
-    sample,
-    context,
-    yes: false,
-    interactive: true,
-    judge: 'claude' as const,
-    print: vi.fn(),
-    info: vi.fn(),
-  };
+  const base = { sample, context, judge: 'claude' as const, print: vi.fn(), info: vi.fn() };
+  const judged: Exec = async () => ({
+    code: 0,
+    stderr: '',
+    timedOut: false,
+    stdout: JSON.stringify({
+      structured_output: {
+        verdict: 'v',
+        points: [
+          { text: 'one', evidence: ['p1'] },
+          { text: 'two', evidence: ['p2'] },
+        ],
+        habits: ['h'],
+      },
+    }),
+  });
 
   it('--dry-run prints the prompt and sends nothing', async () => {
     const exec = vi.fn();
     const print = vi.fn();
-    const result = await roast({ ...base, dryRun: true, confirm: vi.fn(), exec, print });
+    const result = await roast({ ...base, dryRun: true, exec, print });
     expect(result.status).toBe('dry-run');
     expect(exec).not.toHaveBeenCalled();
     expect(print.mock.calls[0]?.[0]).toBe(buildJudgePrompt(context, sample));
   });
 
-  it('asks first and sends nothing on no', async () => {
-    const exec = vi.fn();
-    const confirm = vi.fn(async () => false);
-    const result = await roast({ ...base, dryRun: false, confirm, exec });
-    expect(confirm).toHaveBeenCalledOnce();
-    expect(result).toEqual({ status: 'skipped', reason: 'you said no' });
-    expect(exec).not.toHaveBeenCalled();
+  it('says what it sends and where before sending, without asking', async () => {
+    const info = vi.fn();
+    const result = await roast({ ...base, dryRun: false, exec: judged, info });
+    expect(info.mock.calls[0]?.[0]).toMatch(
+      /^sending \d+ redacted prompts from \d+ sessions to your claude CLI \(~\d+k tokens/,
+    );
+    expect(result.status === 'done' && result.verdict.points).toEqual(['one', 'two']);
   });
 
-  it('never sends from a non-interactive run without --yes', async () => {
+  it('runs the judge inside the progress wrapper', async () => {
+    let wrapped = 0;
+    const during = <T>(task: Promise<T>) => {
+      wrapped++;
+      return task;
+    };
+    await roast({ ...base, dryRun: false, exec: judged, during });
+    expect(wrapped).toBe(1);
+  });
+
+  it('skips when no judge CLI is installed', async () => {
     const exec = vi.fn();
     const result = await roast({
       ...base,
+      judge: undefined,
       dryRun: false,
-      interactive: false,
-      confirm: vi.fn(),
       exec,
+      env: { PATH: '' },
     });
     expect(result.status).toBe('skipped');
     expect(exec).not.toHaveBeenCalled();
-  });
-
-  it('judges and resolves receipts with --yes', async () => {
-    const exec: Exec = async () => ({
-      code: 0,
-      stderr: '',
-      timedOut: false,
-      stdout: JSON.stringify({
-        structured_output: {
-          verdict: 'v',
-          roast: ['r'],
-          receipts: [
-            { id: 'p1', why: 'w' },
-            { id: 'p2', why: 'w' },
-          ],
-          habits: ['h'],
-        },
-      }),
-    });
-    const result = await roast({ ...base, dryRun: false, yes: true, confirm: vi.fn(), exec });
-    expect(result.status === 'done' && result.verdict.receipts[0]?.item.id).toBe('p1');
   });
 });
 

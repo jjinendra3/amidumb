@@ -20,11 +20,10 @@ HOW TO JUDGE
 - The score and archetype below are fixed, computed locally from all their sessions. Do not change, contradict or re-score them. A high score gets roasted for its quirks, not for vibecoding; a low score gets roasted for the vibecoding.
 
 WRITE (JSON only, matching the schema)
-- verdict: one sentence, at most 200 characters.
-- roast: 2 or 3 lines, each at most 180 characters, each about a pattern you can see in the sample.
-- receipts: 2 or 3 sample ids (like "p12") whose prompts best prove the verdict, each with a "why" of at most 120 characters. Only ids that appear in the sample. Their prompt text is quoted from the real transcript next to your why, so don't quote it yourself.
+- verdict: a one-line headline roast, at most 140 characters. It goes on a shareable image in huge type, so make it land.
+- points: exactly 3 reasons for their score, in the same roast tone, each at most 120 characters and about a pattern you can see in the sample. Give each one "evidence": 1 to 3 sample ids (like "p12") of prompts that show it. Evidence is checked and never shown, so only cite ids from the sample, and never quote prompts in the text.
 - habits: exactly 3 habits to fix, each a one-line rule they could paste into CLAUDE.md or AGENTS.md.
-- Never put file paths, URLs, code identifiers, secrets, or names of companies, products or people into verdict, roast, why or habits. People screenshot this.`;
+- Plain text only: no emoji, no markdown. Never put file paths, URLs, code identifiers, secrets, or names of companies, products or people into anything you write. This becomes an image people post publicly.`;
 
 export function buildJudgePrompt(ctx: JudgeContext, sample: Sample): string {
   const { score } = ctx;

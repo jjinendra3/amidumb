@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import type { Sample, SampleItem } from './sample';
+import type { Sample } from './sample';
 
-// The judge only writes words. Receipts come back as sample ids and are quoted locally,
-// so a made-up quote is impossible: an id that isn't in the sample is dropped, and too
-// few real ones fails the roast.
+// The judge only writes words. Every point it makes must cite sample ids as evidence;
+// the ids are checked against what was actually sent and never shown. A point whose
+// evidence isn't in the sample is dropped, and too few grounded points fails the roast.
 
-export const MIN_RECEIPTS = 2;
-const MAX_RECEIPTS = 3;
+export const MIN_POINTS = 2;
+const MAX_POINTS = 3;
 
 /** Over-long text is cut rather than rejected: a wordy roast is still a roast. */
 const text = (max: number) =>
@@ -17,12 +17,8 @@ const text = (max: number) =>
     .transform((s) => (s.length > max ? `${s.slice(0, max - 1)}…` : s));
 
 export const judgeOutputSchema = z.object({
-  verdict: text(200),
-  roast: z
-    .array(text(180))
-    .min(1)
-    .transform((lines) => lines.slice(0, 3)),
-  receipts: z.array(z.object({ id: z.string(), why: text(120) })).min(1),
+  verdict: text(140),
+  points: z.array(z.object({ text: text(120), evidence: z.array(z.string()) })).min(1),
   habits: z
     .array(text(160))
     .min(1)
@@ -33,22 +29,21 @@ export const judgeOutputSchema = z.object({
 export const JUDGE_JSON_SCHEMA = {
   type: 'object',
   properties: {
-    verdict: { type: 'string', description: 'One sentence, at most 200 characters.' },
-    roast: {
+    verdict: { type: 'string', description: 'One-line headline roast, at most 140 characters.' },
+    points: {
       type: 'array',
-      items: { type: 'string' },
-      description: '2 or 3 lines, each at most 180 characters.',
-    },
-    receipts: {
-      type: 'array',
-      description: '2 or 3 prompts from the sample that prove the verdict.',
+      description: 'Exactly 3 reasons for the score.',
       items: {
         type: 'object',
         properties: {
-          id: { type: 'string', description: 'A sample id such as "p12".' },
-          why: { type: 'string', description: 'At most 120 characters.' },
+          text: { type: 'string', description: 'At most 120 characters.' },
+          evidence: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '1 to 3 sample ids such as "p12" that show it.',
+          },
         },
-        required: ['id', 'why'],
+        required: ['text', 'evidence'],
         additionalProperties: false,
       },
     },
@@ -58,21 +53,16 @@ export const JUDGE_JSON_SCHEMA = {
       description: 'Exactly 3 one-line rules for CLAUDE.md or AGENTS.md.',
     },
   },
-  required: ['verdict', 'roast', 'receipts', 'habits'],
+  required: ['verdict', 'points', 'habits'],
   additionalProperties: false,
 } as const;
 
 export class JudgeError extends Error {}
 
-export interface Receipt {
-  item: SampleItem;
-  why: string;
-}
-
 export interface Verdict {
   verdict: string;
-  roast: string[];
-  receipts: Receipt[];
+  /** Why the score is what it is, each backed by at least one real sample id. */
+  points: string[];
   habits: string[];
 }
 
@@ -83,19 +73,19 @@ export function resolveJudgeOutput(raw: unknown, sample: Sample): Verdict {
       `the judge returned an unexpected shape:\n${z.prettifyError(parsed.error)}`,
     );
   }
-  const byId = new Map(sample.items.map((item) => [item.id, item]));
-  const receipts: Receipt[] = [];
-  const unknown: string[] = [];
-  for (const { id, why } of parsed.data.receipts) {
-    const item = byId.get(id.trim().replace(/^\[|\]$/g, ''));
-    if (!item) unknown.push(id);
-    else if (!receipts.some((r) => r.item.id === item.id)) receipts.push({ item, why });
-  }
-  if (receipts.length < MIN_RECEIPTS) {
+  const ids = new Set(sample.items.map((item) => item.id));
+  const cited = (id: string) => ids.has(id.trim().replace(/^\[|\]$/g, ''));
+  const grounded = parsed.data.points.filter((p) => p.evidence.some(cited));
+  if (grounded.length < MIN_POINTS) {
+    const dropped = parsed.data.points.length - grounded.length;
     throw new JudgeError(
-      `the judge cited ${receipts.length} real prompts, need ${MIN_RECEIPTS}` +
-        (unknown.length ? ` (ids not in the sample: ${unknown.join(', ')})` : ''),
+      `the judge backed ${grounded.length} points with real prompts, need ${MIN_POINTS}` +
+        (dropped ? ` (${dropped} cited ids that were never sent)` : ''),
     );
   }
-  return { ...parsed.data, receipts: receipts.slice(0, MAX_RECEIPTS) };
+  return {
+    verdict: parsed.data.verdict,
+    points: grounded.slice(0, MAX_POINTS).map((p) => p.text),
+    habits: parsed.data.habits,
+  };
 }

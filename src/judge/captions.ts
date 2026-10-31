@@ -1,0 +1,23 @@
+/** Spinner captions while the judge reads your prompts. Jokes, not claims about you. */
+export const JUDGING_CAPTIONS = [
+  'counting your "fix it"s',
+  'reading your 3am prompts',
+  'measuring vibes',
+  'asking your agent how it really feels',
+  'checking if anyone read the diff',
+  'grading your caps lock',
+  'translating "make it work"',
+  'calculating your vibe-to-spec ratio',
+  'consulting the senior engineer you ignored',
+  'un-continuing your continues',
+  'pretending to be impressed',
+  'running the tests you skipped',
+  'deflating egos',
+  'judging silently',
+  'looking for your acceptance criteria',
+  'reviewing your code review',
+  'locating the plan',
+  'sharpening the roast',
+  'blaming the intern',
+  'reading the room',
+];

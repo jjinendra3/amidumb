@@ -1,14 +1,34 @@
 {
   "name": "amidumb",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Your AI coding transcripts, judged. Do you direct your agent or just vibecode?",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "ai",
+    "agents",
+    "vibecoding",
+    "prompting",
+    "cli",
+    "roast",
+    "wrapped"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jjinendra3/amidumb.git"
+  },
+  "homepage": "https://github.com/jjinendra3/amidumb#readme",
+  "bugs": {
+    "url": "https://github.com/jjinendra3/amidumb/issues"
+  },
   "type": "module",
   "bin": {
     "amidumb": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "assets"
   ],
   "engines": {
     "node": ">=18.3"
@@ -18,18 +38,21 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "pnpm typecheck && pnpm lint && pnpm test && pnpm build"
   },
   "packageManager": "pnpm@10.29.3",
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "picocolors": "1.1.1"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
     "@types/node": "^18.19.130",
+    "satori": "0.63.2",
     "tsup": "^9.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
-  },
-  "dependencies": {
-    "picocolors": "1.1.1",
+    "vitest": "^5.0.5",
     "zod": "4.6.7"
   }
 }

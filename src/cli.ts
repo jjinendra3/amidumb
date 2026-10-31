@@ -1,6 +1,8 @@
-import { createInterface } from 'node:readline/promises';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { version } from '../package.json';
+import { JUDGING_CAPTIONS } from './judge/captions';
 import { roast } from './judge/flow';
 import { JUDGE_CLIS, type JudgeCli } from './judge/run';
 import { buildSample } from './judge/sample';
@@ -9,13 +11,16 @@ import { labelsPath, loadLabels } from './label/store';
 import { runLabeling } from './label/ui';
 import { load, loadForScoring } from './pipeline';
 import { calibrate, renderCalibration } from './report/calibrate';
-import { renderCard } from './report/card';
-import { describeWindow, renderScore } from './report/score';
+import { type CardInput, renderCard } from './report/card';
+import { renderCardPng } from './report/image';
+import { openFile } from './report/open';
+import { describeWindow, renderScore, type WindowInfo } from './report/score';
+import { withSpinner } from './report/spinner';
 import { renderSurvey } from './report/survey';
 import { renderAggregate, renderLeverage, renderSample, renderSessions } from './report/table';
-import { MIN_PROMPTS, MIN_SESSIONS, scoreSession, scoreUser } from './score/rubric';
+import { MIN_PROMPTS, MIN_SESSIONS, scoreSession, scoreUser, type UserScore } from './score/rubric';
 import { type AggregateSignals, aggregate } from './signals/aggregate';
-import { sessionHash } from './signals/session';
+import { type SessionSignals, sessionHash } from './signals/session';
 import { type AgentTool, defaultRoots, type Session, type SourceRoots } from './sources';
 
 const HELP = `amidumb: your AI coding transcripts, judged.
@@ -34,9 +39,8 @@ Options
   --json             numbers only, no text, titles or paths: safe to share
   --no-roast         score and card only, nothing is sent anywhere
   --dry-run          print exactly what the roast would send, and send nothing
-  -y, --yes          send the roast sample without asking
   --judge <cli>      claude or codex (default: the first one installed)
-  --unmask           show paths and code identifiers in receipts (masked by default)
+  --no-open          save the card image without opening it
   --limit <n>        label: sessions per run (default 40)
   --relabel          label: include sessions you already labelled
   --claude-dir <p>   Claude Code transcripts (default ~/.claude/projects)
@@ -45,7 +49,7 @@ Options
   -v, --version
 
 The score is computed locally. The roast sends a redacted sample of about 150 of
-your prompts to your own claude or codex CLI, and asks first. No telemetry.`;
+your prompts to your own claude or codex CLI (--no-roast skips it). No telemetry.`;
 
 const TOOLS: readonly AgentTool[] = ['claude-code', 'codex'];
 
@@ -62,9 +66,8 @@ async function main(): Promise<void> {
       relabel: { type: 'boolean' },
       'no-roast': { type: 'boolean' },
       'dry-run': { type: 'boolean' },
-      yes: { type: 'boolean', short: 'y' },
       judge: { type: 'string' },
-      unmask: { type: 'boolean' },
+      'no-open': { type: 'boolean' },
       'claude-dir': { type: 'string' },
       'codex-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
@@ -110,14 +113,19 @@ async function report(
     sample?: string;
     'no-roast'?: boolean;
     'dry-run'?: boolean;
-    yes?: boolean;
     judge?: string;
-    unmask?: boolean;
+    'no-open'?: boolean;
   },
 ): Promise<void> {
   const judge = parseJudge(values.judge);
+  const debug = Boolean(values.raw || values.sessions || values.sample);
+  // The plain run is the show: nothing printed until the reveal.
+  const show = !values.json && !debug;
   const started = Date.now();
-  const { all, sessions, rows, leverage, window } = await loadForScoring(roots, days);
+  const loading = loadForScoring(roots, days);
+  const { all, sessions, rows, leverage, window } = await (show
+    ? withSpinner(loading, { captions: ['reading your transcripts'] })
+    : loading);
   const score = scoreUser(rows, leverage);
 
   const columns: [string, AggregateSignals][] = TOOLS.filter((t) =>
@@ -144,6 +152,8 @@ async function report(
     for (const root of Object.values(roots)) console.log(`  ${root}`);
     return;
   }
+
+  if (score && show) return reveal(sessions, rows, score, window, judge, values);
 
   if (values.raw) {
     console.log(renderAggregate(columns));
@@ -176,9 +186,16 @@ async function report(
             .join(', ')}`
         : ''),
   );
+}
 
-  // Debug views stop here; the card and the roast are for the plain run.
-  if (!score || values.raw || values.sessions || values.sample) return;
+async function reveal(
+  sessions: Session[],
+  rows: SessionSignals[],
+  score: UserScore,
+  window: WindowInfo,
+  judge: JudgeCli | undefined,
+  values: { 'no-roast'?: boolean; 'dry-run'?: boolean; 'no-open'?: boolean },
+): Promise<void> {
   const ragePrompts = rows.reduce((n, r) => n + r.flags.rage, 0);
   const secrets = rows.reduce((n, r) => n + r.secrets, 0);
   let verdict: Verdict | undefined;
@@ -188,45 +205,44 @@ async function report(
         sample: buildSample(sessions),
         context: { score, window, ragePrompts, secrets },
         dryRun: Boolean(values['dry-run']),
-        yes: Boolean(values.yes),
-        interactive: Boolean(process.stdin.isTTY && process.stderr.isTTY),
         judge,
-        confirm: ask,
         print: (text) => console.log(text),
         info: (text) => console.error(text),
+        during: (task) => withSpinner(task, { captions: JUDGING_CAPTIONS }),
       });
       if (result.status === 'dry-run') return;
-      if (result.status === 'skipped') console.error(`\nno roast: ${result.reason}.`);
+      if (result.status === 'skipped') console.error(`no roast: ${result.reason}.`);
       else verdict = result.verdict;
     } catch (error) {
       if (!(error instanceof JudgeError)) throw error;
       console.error(
-        `\nroast failed: ${error.message}\nThe score stands; rerun to try the roast again.`,
+        `roast failed: ${error.message}\nHere's your score anyway; rerun for the roast.`,
       );
       process.exitCode = 1;
     }
   }
-  console.log(
-    `\n${renderCard({
-      score,
-      window,
-      verdict,
-      ragePrompts,
-      secrets,
-      unmask: Boolean(values.unmask),
-      columns: process.stdout.columns,
-    })}`,
-  );
+
+  const card: CardInput = { score, window, verdict, ragePrompts, secrets };
+  console.log(`\n${renderCard({ ...card, columns: process.stdout.columns })}`);
+  await saveImage(card, !values['no-open']);
 }
 
-async function ask(question: string): Promise<boolean> {
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
+/** Saves the shareable PNG next to where amidumb was run, and opens it. */
+async function saveImage(card: CardInput, open: boolean): Promise<void> {
+  const d = new Date();
+  const date = [d.getFullYear(), d.getMonth() + 1, d.getDate()]
+    .map((n) => String(n).padStart(2, '0'))
+    .join('-');
+  const file = `amidumb-${date}.png`;
+  const path = join(process.cwd(), file);
   try {
-    const answer = (await rl.question(question)).trim().toLowerCase();
-    return answer === '' || answer === 'y' || answer === 'yes';
-  } finally {
-    rl.close();
+    writeFileSync(path, await renderCardPng(card));
+  } catch (error) {
+    console.error(`couldn't make the card image: ${(error as Error).message}`);
+    return;
   }
+  console.log(`\ncard saved to ./${file}`);
+  if (open && process.stdout.isTTY) openFile(path);
 }
 
 function parseJudge(value: string | undefined): JudgeCli | undefined {

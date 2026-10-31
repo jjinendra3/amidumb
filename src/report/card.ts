@@ -4,15 +4,14 @@ import type { Verdict } from '../judge/schema';
 import { SUB_SCORES, type UserScore } from '../score/rubric';
 import type { WindowInfo } from './score';
 
-// The shareable card: score, archetype, roast, receipts, rage meter, leak count. Built to
-// be screenshotted, so everything the judge wrote and every quote goes through masking.
+// The terminal card: score, archetype, verdict, why, rage meter, leak count, habits. The
+// same input renders the PNG (image.ts). Everything the judge wrote goes through masking.
 
 const MAX_INNER = 72;
 const BAR = 20;
 const RAGE_CELLS = 10;
 /** A rage meter is full at this share of prompts. */
 const RAGE_FULL_SHARE = 0.05;
-const QUOTE_CHARS = 160;
 const LABEL = 14;
 
 export interface CardInput {
@@ -21,8 +20,6 @@ export interface CardInput {
   verdict?: Verdict;
   ragePrompts: number;
   secrets: number;
-  /** Show paths and identifiers in receipts verbatim. */
-  unmask: boolean;
   /** Terminal columns; the card is at most 76 wide. */
   columns?: number;
   color?: boolean;
@@ -35,7 +32,7 @@ const visible = (s: string) => s.replace(ANSI, '').length;
 export function renderCard(input: CardInput): string {
   const c = pc.createColors(input.color ?? pc.isColorSupported);
   const inner = Math.max(40, Math.min(MAX_INNER, (input.columns ?? 80) - 4));
-  const mask = (s: string) => (input.unmask ? s : maskForCard(s));
+  const mask = maskForCard;
   const { score, verdict } = input;
   const body: string[] = [];
   const blank = () => body.push('');
@@ -68,17 +65,10 @@ export function renderCard(input: CardInput): string {
 
   if (verdict) {
     blank();
-    body.push(c.bold('THE ROAST'));
-    for (const line of verdict.roast) {
-      const [first = '', ...rest] = wrap(mask(line), inner - 2);
-      body.push(`• ${first}`, ...rest.map((l) => `  ${l}`));
-    }
-    blank();
-    body.push(c.bold('RECEIPTS'));
-    for (const { item, why } of verdict.receipts) {
-      para(`“${clip(mask(item.prompt), QUOTE_CHARS)}”`);
-      const [first = '', ...rest] = wrap(mask(why), inner - 4);
-      body.push(`  ↳ ${c.dim(first)}`, ...rest.map((l) => `    ${c.dim(l)}`));
+    body.push(c.bold('WHY THIS SCORE'));
+    for (const point of verdict.points) {
+      const [first = '', ...rest] = wrap(mask(point), inner - 2);
+      body.push(`${tone('→')} ${first}`, ...rest.map((l) => `  ${l}`));
     }
   }
 
@@ -118,10 +108,6 @@ export function renderCard(input: CardInput): string {
   const bottom = `╰${'─'.repeat(inner + 2)}╯`;
   const rows = body.map((line) => `│ ${line}${' '.repeat(Math.max(0, inner - visible(line)))} │`);
   return [top, ...rows, bottom].join('\n');
-}
-
-function clip(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 /** Word wrap on visible width; words longer than a line are split. */

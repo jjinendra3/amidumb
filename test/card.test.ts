@@ -1,69 +1,55 @@
 import { describe, expect, it } from 'vitest';
-import type { SampleItem } from '../src/judge/sample';
 import type { Verdict } from '../src/judge/schema';
-import { renderCard, wrap } from '../src/report/card';
+import { type CardInput, renderCard, wrap } from '../src/report/card';
+import {
+  cardElement,
+  IMAGE_HEIGHT,
+  IMAGE_WIDTH,
+  printable,
+  renderCardPng,
+} from '../src/report/image';
 import { scoreUser } from '../src/score/rubric';
 import { PERSONAS, rowsOf } from './personas';
 
 const score = scoreUser(rowsOf(PERSONAS.architect), PERSONAS.architect.leverage);
 if (!score) throw new Error('persona must score');
 
-const item = (id: string, prompt: string): SampleItem => ({
-  id,
-  session: 's1',
-  tool: 'claude-code',
-  cls: 'specify',
-  opening: true,
-  afterProposal: false,
-  prompt,
-});
-
 const verdict: Verdict = {
-  verdict: 'You write specs like a lawyer and then never open the diff.',
-  roast: [
+  verdict: 'You write specs like a lawyer and then never open the diff in src/api/user.ts.',
+  points: [
     'Four constraints per prompt and zero tests requested. Bold.',
     'You approve plans faster than the agent can write them.',
-  ],
-  receipts: [
-    {
-      item: item('p3', 'Add a retry to fetchUser in src/api/user.ts, only on 5xx'),
-      why: 'spec of the year',
-    },
-    { item: item('p9', 'yes'), why: 'said in 0.4 seconds' },
+    'Every session opens with a spec. Every session ends with vibes.',
   ],
   habits: ['Ask for the diff before saying yes.', 'Name the test that proves it works.', 'Stop.'],
 };
 
-const base = {
+const base: CardInput = {
   score,
-  window: { days: 30 as const, widened: false, sessions: 6, prompts: 30 },
+  window: { days: 30, widened: false, sessions: 6, prompts: 30 },
   ragePrompts: 2,
   secrets: 3,
-  unmask: false,
-  color: false,
 };
 
 describe('renderCard', () => {
   it('renders the full card', () => {
-    expect(renderCard({ ...base, verdict })).toMatchSnapshot();
+    expect(renderCard({ ...base, verdict, color: false })).toMatchSnapshot();
   });
 
-  it('masks receipts by default and not with --unmask', () => {
-    const masked = renderCard({ ...base, verdict });
-    expect(masked).toContain('“Add a retry to ‹code› in ‹file›, only on 5xx”');
-    expect(masked).not.toContain('src/api/user.ts');
-    expect(renderCard({ ...base, verdict, unmask: true })).toContain('src/api/user.ts');
+  it('masks paths and identifiers in what the judge wrote', () => {
+    const card = renderCard({ ...base, verdict, color: false });
+    expect(card).toContain('‹file›');
+    expect(card).not.toContain('src/api/user.ts');
   });
 
   it('keeps every line inside the box at narrow widths', () => {
-    const card = renderCard({ ...base, verdict, columns: 50 });
-    const widths = new Set(card.split('\n').map((l) => [...l].length));
-    expect(widths.size).toBe(1);
+    const card = renderCard({ ...base, verdict, columns: 50, color: false });
+    expect(new Set(card.split('\n').map((l) => [...l].length)).size).toBe(1);
   });
 
   it('renders without a roast', () => {
-    const card = renderCard(base);
-    expect(card).not.toContain('THE ROAST');
+    const card = renderCard({ ...base, color: false });
+    expect(card).not.toContain('WHY THIS SCORE');
     expect(card).toContain('rage meter');
     expect(card).toContain('3 pasted into prompts');
   });
@@ -76,13 +62,34 @@ describe('wrap', () => {
   });
 });
 
-describe('receipt reasons', () => {
-  it('show the arrow once, even when the reason wraps', () => {
-    const long: Verdict = {
-      ...verdict,
-      receipts: verdict.receipts.map((r) => ({ ...r, why: 'word '.repeat(30).trim() })),
-    };
-    const card = renderCard({ ...base, verdict: long, columns: 50 });
-    expect(card.match(/↳/g)).toHaveLength(2);
+describe('card image', () => {
+  const texts = (node: unknown): string[] => {
+    if (typeof node === 'string') return [node];
+    if (Array.isArray(node)) return node.flatMap(texts);
+    if (node && typeof node === 'object' && 'props' in node) {
+      return texts((node as { props: { children?: unknown } }).props.children);
+    }
+    return [];
+  };
+
+  it('carries the score, archetype, verdict and points, masked', () => {
+    const all = texts(cardElement({ ...base, verdict })).join('\n');
+    expect(all).toContain(String(score.overall));
+    expect(all).toContain(score.archetype.name.toUpperCase());
+    expect(all).toContain('WHY THIS SCORE');
+    expect(all).toContain(verdict.points[0]);
+    expect(all).not.toContain('src/api/user.ts');
+    expect(all).toContain('npx amidumb');
   });
+
+  it('drops what the fonts cannot draw', () => {
+    expect(printable('nice 🔥 work\u0007 ok')).toBe('nice work ok');
+  });
+
+  it('renders a PNG at share size', async () => {
+    const png = await renderCardPng({ ...base, verdict });
+    expect(png.subarray(1, 4).toString()).toBe('PNG');
+    expect(png.readUInt32BE(16)).toBe(IMAGE_WIDTH);
+    expect(png.readUInt32BE(20)).toBe(IMAGE_HEIGHT);
+  }, 20_000);
 });
