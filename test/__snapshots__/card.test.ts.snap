@@ -1,0 +1,36 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderCard > renders the full card 1`] = `
+"╭──────────────────────────────────────────────────────────────────────────╮
+│ amidumb · your AI coding transcripts, judged                             │
+│                                                                          │
+│ 88/100  ARCHITECT                                                        │
+│ You write specs like a lawyer and then never open the diff.              │
+│                                                                          │
+│ specification 100  ████████████████████                                  │
+│ steering      100  ████████████████████                                  │
+│ verification   60  ████████████░░░░░░░░                                  │
+│ discipline    100  ████████████████████                                  │
+│ leverage       64  █████████████░░░░░░░                                  │
+│                                                                          │
+│ THE ROAST                                                                │
+│ • Four constraints per prompt and zero tests requested. Bold.            │
+│ • You approve plans faster than the agent can write them.                │
+│                                                                          │
+│ RECEIPTS                                                                 │
+│ “Add a retry to ‹code› in ‹file›, only on 5xx”                           │
+│   ↳ spec of the year                                                     │
+│ “yes”                                                                    │
+│   ↳ said in 0.4 seconds                                                  │
+│                                                                          │
+│ rage meter    ██████████ 2 prompts with swearing, CAPS or !!!            │
+│ secrets       3 pasted into prompts (redacted before judging)            │
+│                                                                          │
+│ FIX THESE                                                                │
+│ 1. Ask for the diff before saying yes.                                   │
+│ 2. Name the test that proves it works.                                   │
+│ 3. Stop.                                                                 │
+│                                                                          │
+│ rubric v2 · 6 sessions · 30 prompts · npx amidumb                        │
+╰──────────────────────────────────────────────────────────────────────────╯"
+`;

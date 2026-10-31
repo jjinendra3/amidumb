@@ -1,9 +1,15 @@
+import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import { version } from '../package.json';
+import { roast } from './judge/flow';
+import { JUDGE_CLIS, type JudgeCli } from './judge/run';
+import { buildSample } from './judge/sample';
+import { JudgeError, type Verdict } from './judge/schema';
 import { labelsPath, loadLabels } from './label/store';
 import { runLabeling } from './label/ui';
 import { load, loadForScoring } from './pipeline';
 import { calibrate, renderCalibration } from './report/calibrate';
+import { renderCard } from './report/card';
 import { describeWindow, renderScore } from './report/score';
 import { renderSurvey } from './report/survey';
 import { renderAggregate, renderLeverage, renderSample, renderSessions } from './report/table';
@@ -26,6 +32,11 @@ Options
   --sessions         one row per session, with titles (stays local)
   --sample <n>       print n random detected prompts to check detection (stays local)
   --json             numbers only, no text, titles or paths: safe to share
+  --no-roast         score and card only, nothing is sent anywhere
+  --dry-run          print exactly what the roast would send, and send nothing
+  -y, --yes          send the roast sample without asking
+  --judge <cli>      claude or codex (default: the first one installed)
+  --unmask           show paths and code identifiers in receipts (masked by default)
   --limit <n>        label: sessions per run (default 40)
   --relabel          label: include sessions you already labelled
   --claude-dir <p>   Claude Code transcripts (default ~/.claude/projects)
@@ -33,7 +44,8 @@ Options
   -h, --help
   -v, --version
 
-Nothing leaves your machine.`;
+The score is computed locally. The roast sends a redacted sample of about 150 of
+your prompts to your own claude or codex CLI, and asks first. No telemetry.`;
 
 const TOOLS: readonly AgentTool[] = ['claude-code', 'codex'];
 
@@ -48,6 +60,11 @@ async function main(): Promise<void> {
       json: { type: 'boolean' },
       limit: { type: 'string' },
       relabel: { type: 'boolean' },
+      'no-roast': { type: 'boolean' },
+      'dry-run': { type: 'boolean' },
+      yes: { type: 'boolean', short: 'y' },
+      judge: { type: 'string' },
+      unmask: { type: 'boolean' },
       'claude-dir': { type: 'string' },
       'codex-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
@@ -86,8 +103,19 @@ async function main(): Promise<void> {
 async function report(
   roots: SourceRoots,
   days: number | 'all' | undefined,
-  values: { raw?: boolean; json?: boolean; sessions?: boolean; sample?: string },
+  values: {
+    raw?: boolean;
+    json?: boolean;
+    sessions?: boolean;
+    sample?: string;
+    'no-roast'?: boolean;
+    'dry-run'?: boolean;
+    yes?: boolean;
+    judge?: string;
+    unmask?: boolean;
+  },
 ): Promise<void> {
+  const judge = parseJudge(values.judge);
   const started = Date.now();
   const { all, sessions, rows, leverage, window } = await loadForScoring(roots, days);
   const score = scoreUser(rows, leverage);
@@ -148,6 +176,63 @@ async function report(
             .join(', ')}`
         : ''),
   );
+
+  // Debug views stop here; the card and the roast are for the plain run.
+  if (!score || values.raw || values.sessions || values.sample) return;
+  const ragePrompts = rows.reduce((n, r) => n + r.flags.rage, 0);
+  const secrets = rows.reduce((n, r) => n + r.secrets, 0);
+  let verdict: Verdict | undefined;
+  if (!values['no-roast']) {
+    try {
+      const result = await roast({
+        sample: buildSample(sessions),
+        context: { score, window, ragePrompts, secrets },
+        dryRun: Boolean(values['dry-run']),
+        yes: Boolean(values.yes),
+        interactive: Boolean(process.stdin.isTTY && process.stderr.isTTY),
+        judge,
+        confirm: ask,
+        print: (text) => console.log(text),
+        info: (text) => console.error(text),
+      });
+      if (result.status === 'dry-run') return;
+      if (result.status === 'skipped') console.error(`\nno roast: ${result.reason}.`);
+      else verdict = result.verdict;
+    } catch (error) {
+      if (!(error instanceof JudgeError)) throw error;
+      console.error(
+        `\nroast failed: ${error.message}\nThe score stands; rerun to try the roast again.`,
+      );
+      process.exitCode = 1;
+    }
+  }
+  console.log(
+    `\n${renderCard({
+      score,
+      window,
+      verdict,
+      ragePrompts,
+      secrets,
+      unmask: Boolean(values.unmask),
+      columns: process.stdout.columns,
+    })}`,
+  );
+}
+
+async function ask(question: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const answer = (await rl.question(question)).trim().toLowerCase();
+    return answer === '' || answer === 'y' || answer === 'yes';
+  } finally {
+    rl.close();
+  }
+}
+
+function parseJudge(value: string | undefined): JudgeCli | undefined {
+  if (value === undefined) return undefined;
+  if ((JUDGE_CLIS as readonly string[]).includes(value)) return value as JudgeCli;
+  throw new UsageError(`--judge must be one of: ${JUDGE_CLIS.join(', ')}`);
 }
 
 async function label(
