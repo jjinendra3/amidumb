@@ -99,10 +99,7 @@ export function renderCard(input: CardInput): string {
   }
 
   blank();
-  para(
-    `rubric v${score.rubricVersion} · ${input.window.sessions} sessions · ${input.window.prompts} prompts · npx amidumb`,
-    c.dim,
-  );
+  para(`${input.window.sessions} sessions · ${input.window.prompts} prompts · npx amidumb`, c.dim);
 
   const top = `╭${'─'.repeat(inner + 2)}╮`;
   const bottom = `╰${'─'.repeat(inner + 2)}╯`;

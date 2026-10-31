@@ -8,7 +8,7 @@ npx amidumb
 
 amidumb reads your Claude Code and Codex transcripts, scores how you direct the agent from 0 to 100, gives you an archetype, gets your own agent to roast you for it, and saves the result as an image in the folder you ran it from, ready to post.
 
-<!-- demo card: add a real amidumb-YYYY-MM-DD.png here -->
+<p align="center"><img src="https://raw.githubusercontent.com/jjinendra3/amidumb/master/docs/card.png" width="440" alt="An amidumb card: 83/100, Director, with a one-line roast, five sub-score bars, three reasons for the score, a rage meter and a secret-leak count"></p>
 
 ## What you get
 
@@ -115,7 +115,7 @@ amidumb survey [options]     record kinds and keys in your transcripts (no conte
 ## Supported
 
 - **Claude Code** in the terminal, VS Code and the desktop app, and **Codex** in the CLI, VS Code and the desktop app. Cursor comes later.
-- **Node 18.3 or newer.** Tested on macOS; Linux should work. Windows is untested.
+- **Node 18.3 or newer** on macOS, Linux and Windows. CI runs the built CLI end to end on all three, with Node 18, 20 and 22, against a fake judge.
 - **Transcript formats** aren't documented and change between versions. If your numbers look wrong, `npx amidumb survey` prints the record types and keys in your transcripts, with no content, so you can attach it to an issue.
 
 ## Development

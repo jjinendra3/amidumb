@@ -50,7 +50,6 @@ export function cardElement(input: CardInput): Element {
   const { accent, glow } = tone(score.overall);
   const rageShare = window.prompts ? input.ragePrompts / window.prompts : 0;
   const rageCells = Math.round(Math.min(1, rageShare / RAGE_FULL_SHARE) * RAGE_CELLS);
-  const span = window.days === 'all' ? 'all history' : `last ${window.days} days`;
 
   const header = el({ justifyContent: 'space-between', alignItems: 'center' }, [
     el({ fontSize: 28, fontWeight: 900, color: INK, letterSpacing: -0.5 }, 'amidumb'),
@@ -153,10 +152,7 @@ export function cardElement(input: CardInput): Element {
   ]);
 
   const footer = el({ justifyContent: 'space-between', alignItems: 'center' }, [
-    el(
-      { fontSize: 19, color: MUTED },
-      `rubric v${score.rubricVersion} · ${span} · ${window.sessions} sessions · ${window.prompts} prompts`,
-    ),
+    el({ fontSize: 19, color: MUTED }, `${window.sessions} sessions · ${window.prompts} prompts`),
     el({ fontSize: 24, fontWeight: 900, color: accent }, 'npx amidumb'),
   ]);
 

@@ -26,6 +26,6 @@ exports[`renderCard > renders the full card 1`] = `
 │ 2. Name the test that proves it works.                                   │
 │ 3. Stop.                                                                 │
 │                                                                          │
-│ rubric v2 · 6 sessions · 30 prompts · npx amidumb                        │
+│ 6 sessions · 30 prompts · npx amidumb                                    │
 ╰──────────────────────────────────────────────────────────────────────────╯"
 `;

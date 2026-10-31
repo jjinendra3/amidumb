@@ -40,6 +40,7 @@ describe('renderCard', () => {
     const card = renderCard({ ...base, verdict, color: false });
     expect(card).toContain('‹file›');
     expect(card).not.toContain('src/api/user.ts');
+    expect(card).not.toContain('rubric v');
   });
 
   it('keeps every line inside the box at narrow widths', () => {
