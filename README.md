@@ -1,42 +1,94 @@
-# amidumb
+<h1 align="center">amidumb</h1>
 
-**Your AI coding transcripts, judged.** Do you direct your coding agent like an engineer, or do you just vibecode?
+<p align="center">
+  <b>Your AI coding transcripts, judged.</b><br>
+  Do you direct your coding agent like an engineer, or do you just vibecode?
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/amidumb"><img src="https://img.shields.io/npm/v/amidumb?color=4ade80&label=npm" alt="npm version"></a>
+  <a href="https://github.com/jjinendra3/amidumb/actions/workflows/ci.yml"><img src="https://github.com/jjinendra3/amidumb/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/jjinendra3/amidumb/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
 
 ```sh
 npx amidumb
 ```
 
-amidumb reads your Claude Code and Codex transcripts, scores how you direct the agent from 0 to 100, gives you an archetype, gets your own agent to roast you for it, and saves the result as an image in the folder you ran it from, ready to post.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jjinendra3/amidumb/master/docs/demo.gif" width="400" alt="A terminal running npx amidumb: it reads the transcripts, sends a redacted sample to the claude CLI, and prints a card with the score, title, roast and sub-scores">
+  <img src="https://raw.githubusercontent.com/jjinendra3/amidumb/master/docs/card.png" width="400" alt="An amidumb card: 83/100, Micromanager, with a one-line roast, five sub-score bars, three reasons for the score, a rage meter and a secret-leak count">
+</p>
 
-<p align="center"><img src="https://raw.githubusercontent.com/jjinendra3/amidumb/master/docs/card.png" width="440" alt="An amidumb card: 83/100, Micromanager, with a one-line roast, five sub-score bars, three reasons for the score, a rage meter and a secret-leak count"></p>
+amidumb reads your Claude Code and Codex history on your machine, scores how well you direct the agent from 0 to 100, gives you a title for it, gets your own `claude` to roast you, and saves a card you can post. One command, no sign-up, no API key, and the score never leaves your machine.
 
 ## What you get
 
-- **Direction score** (0–100) with five sub-scores: specification, steering, verification, discipline and leverage.
-- **A title**, one for every 5 points of your score, from Hostage to Agent's Worst Nightmare. Every one of them is a roast.
-- **The roast**: a one-line verdict and three reasons for your score, written by your own `claude` or `codex`. Every reason has to cite prompts from what was sent; reasons that cite prompts that don't exist are thrown out.
-- **A shareable card**: `amidumb-YYYY-MM-DD.png` (1080×1350) saved where you ran it, and opened for you.
-- **Rage meter**: prompts with swearing, CAPS LOCK or `!!!`.
-- **Secret leak count**: API keys, tokens and passwords you've pasted into prompts.
+- **A direction score** from 0 to 100, with five sub-scores: specification, steering, verification, discipline and leverage.
+- **A title** for every 5 points of your score, from Hostage to Agent's Worst Nightmare. All twenty of them are roasts.
+- **The roast**: a one-line verdict and three reasons for your score, written by your own `claude` (or `codex`). Every reason has to cite prompts that were actually sent; a reason that cites a prompt that doesn't exist is thrown out.
+- **A card**: `amidumb-YYYY-MM-DD.png` (1080×1350), saved where you ran it and opened for you.
+- **A rage meter**: prompts with swearing, CAPS LOCK or `!!!`.
+- **A secret leak count**: API keys, tokens and passwords you've pasted into prompts.
 - **Three habits to fix**, written as rules you can paste into `CLAUDE.md` or `AGENTS.md`.
 
-## Privacy
+## The ladder
 
-- **The score is computed on your machine.** amidumb reads `~/.claude/projects` and `~/.codex/sessions` and runs no servers, no telemetry and no network calls of its own.
-- **The roast runs on your own CLI.** It sends about 150 of your prompts to *your own* `claude` CLI (or `codex` with `--codex`, or when Claude Code isn't installed), on your own plan, and prints one line saying exactly that before it does. If that CLI isn't logged in, it says so and skips the roast. `--no-roast` skips it. Each prompt goes with the agent message before it, cut to 300 characters. Tool output and the files the agent read or wrote are never sent, only what you typed and what the agent said.
+The title comes from your score alone, one for every 5 points. It's a ladder of who's in charge: at the bottom the agent runs you, at the top you run it too hard. None of them is a compliment, the top one included.
+
+| score | title | score | title |
+|---|---|---|---|
+| 95–100 | Agent's Worst Nightmare | 45–49 | Cc'd on Everything |
+| 90–94 | Trust Issues | 40–44 | Mid Vibes |
+| 85–89 | Control Freak | 35–39 | Along for the Ride |
+| 80–84 | Micromanager | 30–34 | Vibe Tourist |
+| 75–79 | Backseat Driver | 25–29 | Spectator |
+| 70–74 | Hall Monitor | 20–24 | Passenger |
+| 65–69 | Professional Delegator | 15–19 | Agent's Assistant |
+| 60–64 | Middle Manager | 10–14 | Intern's Intern |
+| 55–59 | Reluctant Manager | 5–9 | Human Clipboard |
+| 50–54 | Part-Time Boss | 0–4 | Hostage |
+
+## Is it safe to run?
+
+- **The score is computed on your machine.** amidumb reads `~/.claude/projects` and `~/.codex/sessions`. It has no servers, no telemetry and makes no network calls of its own.
+- **The roast runs on your own CLI, on your own plan.** It sends a sample of about 150 prompts to your `claude` CLI (or `codex`), and prints one line saying exactly what it's sending before it does. If that CLI isn't logged in, it says so and skips the roast.
+- **Only what you typed and what the agent said.** Each prompt is cut to 500 characters and goes with the agent's message before it, cut to 300. Tool output and the files the agent read or wrote are never sent.
 - **Secrets are redacted before anything is sent**: private keys, AWS, GitHub, Anthropic, OpenAI, Stripe, Slack, Google and npm keys, JWTs, and `password=`-style assignments.
-- **`--dry-run`** prints exactly what would be sent, and sends nothing.
-- **The judge runs ephemeral** (`claude --no-session-persistence` with no tools, `codex exec --ephemeral` in a read-only sandbox), from an empty folder, so it never ends up in the transcripts it judges.
-- **The card never quotes your prompts.** It shows scores and what the judge wrote, which is told to leave out paths, code and names, and is masked again before rendering.
-- **`--json`** prints numbers only, with no prompt text, titles or paths, so it's safe to share.
+- **`--dry-run`** prints exactly what would be sent, and sends nothing. **`--no-roast`** gives you the score and the card with nothing sent anywhere.
+- **The judge leaves no trace.** It runs ephemeral (`claude --no-session-persistence` with no tools, `codex exec --ephemeral` in a read-only sandbox) from an empty folder, so it never ends up in the transcripts it judges.
+- **The card never quotes your prompts.** It shows scores and what the judge wrote. The judge is told to leave out paths, code and names, and its text is masked again before rendering.
+
+## FAQ
+
+**Does it send my code?**
+Not your files. If you pasted code into a prompt, the first 500 characters of that prompt can be sent, after secrets are redacted. Run `--dry-run` to see every character that would go.
+
+**What does it cost?**
+About 20–30k tokens from your own Claude or Codex plan, once per run. Nothing else.
+
+**Can I rerun it until I get a better score?**
+Rerun all you like: the same transcripts always get the same score. The score comes from a fixed rubric computed locally, never from the LLM. Only the roast's wording changes.
+
+**I use Codex, not Claude Code.**
+amidumb reads Codex sessions too. The roast uses `claude` by default; pass `--codex` to use Codex instead. If Claude Code isn't installed, it uses Codex on its own. Sub-scores built on signals Codex doesn't record are left out, not counted against you.
+
+**My history looks short.**
+Claude Code deletes transcripts after 30 days unless you raise `cleanupPeriodDays` in its settings. amidumb reads everything still on disk; `--days 30` scores just the last month.
+
+**My score is wrong.**
+Open an issue with your `npx amidumb --json` output. It's numbers only: no prompt text, titles or paths. If the numbers themselves look off, `npx amidumb survey` prints the record types and keys in your transcripts, with no content.
 
 ## How the score works (rubric v2)
 
-**The score never comes from the LLM.** An LLM score would change on every run and go easy on whoever is paying for it. The score is a fixed, versioned rubric over signals computed locally, so the same transcripts always get the same score. The LLM only writes the words.
+**The score never comes from the LLM.** An LLM score would change on every run and go easy on whoever is paying for it. The score is a fixed, versioned rubric over signals computed locally. The LLM only writes the words.
+
+Every prompt is classified in the context of the agent message right before it, because a short prompt isn't a dumb prompt: "yes, go" after a good plan is good direction, and "fix it" on repeat is vibecoding. Those classes feed five sub-scores, weighted into the overall score.
+
+<details>
+<summary><b>The full rubric</b></summary>
 
 ### Every prompt is judged in context
-
-A short prompt isn't a dumb prompt. Each prompt is classified against the agent message right before it:
 
 | class | what it is |
 |---|---|
@@ -62,47 +114,22 @@ Each sub-score is computed per session, then averaged with every session weighte
 | Discipline | 20% | starts at 100 and loses points for bare retries and error pastes (150 × their share), runs of more than two nudges, prompts in bypass-permissions mode, and rage |
 | Leverage | 10% | for you as a whole, across Claude Code and Codex: global instructions (35), projects with a `CLAUDE.md` or `AGENTS.md` (up to 35), three or more skills, commands or custom prompts (15), hooks (15) |
 
-A sub-score that doesn't apply is left out and the other weights are rescaled, so Codex users aren't scored on signals Codex doesn't record. You need at least 5 sessions with two or more prompts, and 30 prompts in total. By default it reads all the history on disk; `--days 30` scores just the last month. Claude Code deletes transcripts after 30 days unless you raise `cleanupPeriodDays` in its settings, so your Claude history may be shorter than you think.
+A sub-score that doesn't apply is left out and the other weights are rescaled. You need at least 5 sessions with two or more prompts, and 30 prompts in total.
 
-### Archetypes
-
-The title comes from your overall score alone, one for every 5 points. It's a ladder of who's in charge: at the bottom the agent runs you, at the top you run it too hard. None of them is a compliment, the top one included.
-
-| overall score | archetype |
-|---|---|
-| 95–100 | Agent's Worst Nightmare |
-| 90–94 | Trust Issues |
-| 85–89 | Control Freak |
-| 80–84 | Micromanager |
-| 75–79 | Backseat Driver |
-| 70–74 | Hall Monitor |
-| 65–69 | Professional Delegator |
-| 60–64 | Middle Manager |
-| 55–59 | Reluctant Manager |
-| 50–54 | Part-Time Boss |
-| 45–49 | Cc'd on Everything |
-| 40–44 | Mid Vibes |
-| 35–39 | Along for the Ride |
-| 30–34 | Vibe Tourist |
-| 25–29 | Spectator |
-| 20–24 | Passenger |
-| 15–19 | Agent's Assistant |
-| 10–14 | Intern's Intern |
-| 5–9 | Human Clipboard |
-| 0–4 | Hostage |
+</details>
 
 ## How well does it work?
 
 The honest answer is "better at the extremes than in the middle".
 
-- **Reference personas** are synthetic users at the extremes everyone agrees on, and they're tests: the error paster must score under 30, the slot-machine vibecoder under 35, the architect over 75 and the staff engineer over 80. Any rubric change has to keep them in their bands.
+- **Reference personas** are synthetic users at the extremes everyone agrees on, and they're tests. Someone who mostly pastes errors must score under 30, a retry-looper under 35, a careful spec-writer over 75, and a spec-writer who also verifies and steers over 80. Any rubric change has to keep them in their bands.
 - **Calibration:** the sub-scores were checked against an independent rater that never saw the rubric, on 68 sessions from one heavy user, split into a tuning set and a held-out set.
   - On the held-out set, the opening score ranked sessions the way the rater did 70% of the time; 50% is a coin flip.
   - Verification was about 55%. Most checking (running the app, reading the diff) never shows up in a transcript.
   - Steering couldn't be tested, because that user never got stuck in a retry loop.
 - **Scores probably skew high** for anyone who doesn't retry-loop or paste errors.
 
-Disagree with your score? Open an issue with your `npx amidumb --json` output. It's numbers only. Any change to the rubric bumps its version.
+Any change to the rubric bumps its version.
 
 ## Options
 
@@ -129,7 +156,7 @@ amidumb survey [options]     record kinds and keys in your transcripts (no conte
 
 - **Claude Code** in the terminal, VS Code and the desktop app, and **Codex** in the CLI, VS Code and the desktop app. Cursor comes later.
 - **Node 18.3 or newer** on macOS, Linux and Windows. CI runs the built CLI end to end on all three, with Node 18, 20 and 22, against a fake judge.
-- **Transcript formats** aren't documented and change between versions. If your numbers look wrong, `npx amidumb survey` prints the record types and keys in your transcripts, with no content, so you can attach it to an issue.
+- **Transcript formats** aren't documented and change between versions, so amidumb parses defensively and skips what it doesn't recognise.
 
 ## Development
 
