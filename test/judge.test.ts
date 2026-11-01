@@ -4,7 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { roast } from '../src/judge/flow';
 import { maskForCard } from '../src/judge/mask';
 import { buildJudgePrompt, type JudgeContext } from '../src/judge/prompt';
-import { detectJudge, type Exec, parseJsonText, runJudge, unknownFlag } from '../src/judge/run';
+import {
+  detectJudge,
+  type Exec,
+  loggedOut,
+  parseJsonText,
+  runJudge,
+  unknownFlag,
+} from '../src/judge/run';
 import { buildSample, MAX_CHARS, MAX_ITEMS, type Sample } from '../src/judge/sample';
 import { JudgeError, resolveJudgeOutput } from '../src/judge/schema';
 import { scoreUser } from '../src/score/rubric';
@@ -225,6 +232,50 @@ describe('detectJudge', () => {
   });
 });
 
+describe('loggedOut', () => {
+  const status = (res: Partial<Awaited<ReturnType<Exec>>>): Exec =>
+    vi.fn(async () => ({ code: 0, stdout: '', stderr: '', timedOut: false, ...res }));
+  // An empty CODEX_HOME, so the real ~/.codex/config.toml can't leak into the tests.
+  const env = () => ({ CODEX_HOME: tempRoot() });
+
+  it('asks each CLI for its login status', async () => {
+    const run = status({});
+    await loggedOut('claude', run, env());
+    await loggedOut('codex', run, env());
+    expect(vi.mocked(run).mock.calls.map(([cmd, args]) => [cmd, ...args])).toEqual([
+      ['claude', 'auth', 'status'],
+      ['codex', 'login', 'status'],
+    ]);
+  });
+
+  it('is true only when the CLI says so', async () => {
+    const claudeOut = status({ code: 1, stdout: '{"loggedIn": false, "authMethod": "none"}' });
+    expect(await loggedOut('claude', claudeOut, env())).toBe(true);
+    expect(await loggedOut('codex', status({ code: 1, stdout: 'Not logged in' }), env())).toBe(
+      true,
+    );
+    expect(await loggedOut('claude', status({ stdout: '{"loggedIn": true}' }), env())).toBe(false);
+  });
+
+  it('lets the judge run when it cannot tell', async () => {
+    const oldCli = status({ code: 1, stderr: "error: unknown command 'auth'" });
+    expect(await loggedOut('claude', oldCli, env())).toBe(false);
+    expect(await loggedOut('claude', status({ code: null, timedOut: true }), env())).toBe(false);
+    expect(await loggedOut('claude', status({ code: null, stderr: 'spawn ENOENT' }), env())).toBe(
+      false,
+    );
+  });
+
+  it('trusts a Codex API key or custom provider over `codex login status`', async () => {
+    const run = status({ code: 1, stdout: 'Not logged in' });
+    expect(await loggedOut('codex', run, { ...env(), CODEX_API_KEY: 'k' })).toBe(false);
+    const home = tempRoot();
+    writeFileSync(join(home, 'config.toml'), 'model_provider = "azure"\n');
+    expect(await loggedOut('codex', run, { CODEX_HOME: home })).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+  });
+});
+
 describe('roast flow', () => {
   const sample = buildSample(mixed);
   const base = { sample, context, judge: 'claude' as const, print: vi.fn(), info: vi.fn() };
@@ -260,6 +311,24 @@ describe('roast flow', () => {
       /^sending \d+ redacted prompts from \d+ sessions to your claude CLI \(~\d+k tokens/,
     );
     expect(result.status === 'done' && result.verdict.points).toEqual(['one', 'two']);
+    expect(info.mock.calls[0]?.[0]).not.toContain('--no-roast');
+  });
+
+  it('skips without sending when the judge CLI is logged out', async () => {
+    const info = vi.fn();
+    const exec: Exec = vi.fn(async () => ({
+      code: 1,
+      stdout: '{"loggedIn": false}',
+      stderr: '',
+      timedOut: false,
+    }));
+    const result = await roast({ ...base, dryRun: false, exec, info, env: { PATH: '' } });
+    expect(result).toEqual({
+      status: 'skipped',
+      reason: "your claude CLI isn't logged in (run `claude auth login`)",
+    });
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(info).not.toHaveBeenCalled();
   });
 
   it('runs the judge inside the progress wrapper', async () => {

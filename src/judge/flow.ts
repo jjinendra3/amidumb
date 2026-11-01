@@ -1,5 +1,13 @@
 import { buildJudgePrompt, estimateTokens, type JudgeContext } from './prompt';
-import { detectJudge, type Exec, type JudgeCli, runJudge, runProcess } from './run';
+import {
+  detectJudge,
+  type Exec,
+  type JudgeCli,
+  loggedOut,
+  onPath,
+  runJudge,
+  runProcess,
+} from './run';
 import type { Sample } from './sample';
 import { resolveJudgeOutput, type Verdict } from './schema';
 
@@ -50,9 +58,17 @@ export async function roast(o: RoastOptions): Promise<RoastResult> {
 
   const cli = o.judge ?? detectJudge(o.env);
   if (!cli) return { status: 'skipped', reason: 'no claude or codex CLI on your PATH' };
+  const exec = o.exec ?? runProcess;
+  if (await loggedOut(cli, exec, o.env)) {
+    const fix =
+      cli === 'claude'
+        ? `run \`claude auth login\`${onPath('codex', o.env) ? ', or rerun with --codex' : ''}`
+        : 'run `codex login`';
+    return { status: 'skipped', reason: `your ${cli} CLI isn't logged in (${fix})` };
+  }
 
-  o.info(`sending ${what} to your ${cli} CLI (${tokens} of your own plan) · --no-roast skips this`);
-  const task = runJudge(cli, prompt, o.exec ?? runProcess);
+  o.info(`sending ${what} to your ${cli} CLI (${tokens} of your own plan)`);
+  const task = runJudge(cli, prompt, exec);
   const raw = await (o.during ? o.during(task) : task);
   return { status: 'done', cli, verdict: resolveJudgeOutput(raw, o.sample) };
 }

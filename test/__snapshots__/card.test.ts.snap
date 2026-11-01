@@ -4,14 +4,14 @@ exports[`renderCard > renders the full card 1`] = `
 "╭──────────────────────────────────────────────────────────────────────────╮
 │ amidumb · your AI coding transcripts, judged                             │
 │                                                                          │
-│ 88/100  ARCHITECT                                                        │
+│ 88/100  CONTROL FREAK                                                    │
 │ You write specs like a lawyer and then never open the diff in ‹file›     │
 │                                                                          │
-│ specification 100  ████████████████████                                  │
-│ steering      100  ████████████████████                                  │
-│ verification   60  ████████████░░░░░░░░                                  │
-│ discipline    100  ████████████████████                                  │
-│ leverage       64  █████████████░░░░░░░                                  │
+│ specification 100  ━━━━━━━━━━━━━━━━━━━━                                  │
+│ steering      100  ━━━━━━━━━━━━━━━━━━━━                                  │
+│ verification   60  ━━━━━━━━━━━━────────                                  │
+│ discipline    100  ━━━━━━━━━━━━━━━━━━━━                                  │
+│ leverage       64  ━━━━━━━━━━━━━───────                                  │
 │                                                                          │
 │ WHY THIS SCORE                                                           │
 │ → Four constraints per prompt and zero tests requested. Bold.            │

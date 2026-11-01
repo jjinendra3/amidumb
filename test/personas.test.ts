@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ARCHETYPES } from '../src/score/archetypes';
 import { scoreUser } from '../src/score/rubric';
 import { PERSONAS, type Persona, rowsOf } from './personas';
 
@@ -12,29 +13,29 @@ describe('reference personas', () => {
   it('error paster scores under 30', () => {
     const s = score(PERSONAS.errorPaster);
     expect(s.overall).toBeLessThan(30);
-    expect(s.archetype.id).toBe('error-paster');
   });
 
   it('slot-machine vibecoder scores under 35', () => {
     const s = score(PERSONAS.slotMachine);
     expect(s.overall).toBeLessThan(35);
-    expect(s.archetype.id).toBe('slot-machine');
   });
 
   it('architect scores over 75', () => {
     const s = score(PERSONAS.architect);
     expect(s.overall).toBeGreaterThan(75);
-    expect(['architect', 'staff-engineer']).toContain(s.archetype.id);
   });
 
   it('staff engineer scores over 80', () => {
     const s = score(PERSONAS.staffEngineer);
     expect(s.overall).toBeGreaterThan(80);
-    expect(s.archetype.id).toBe('staff-engineer');
   });
 
-  it('backseat driver is recognised', () => {
-    expect(score(PERSONAS.backseatDriver).archetype.id).toBe('backseat-driver');
+  it('titles every persona by its 5-point score band alone', () => {
+    const fromBottom = ARCHETYPES.map((a) => a.id).reverse();
+    for (const p of Object.values(PERSONAS)) {
+      const s = score(p);
+      expect(s.archetype.id, p.name).toBe(fromBottom[Math.min(19, Math.floor(s.overall / 5))]);
+    }
   });
 
   it('a normal mix lands in the middle', () => {

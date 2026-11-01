@@ -8,12 +8,12 @@ npx amidumb
 
 amidumb reads your Claude Code and Codex transcripts, scores how you direct the agent from 0 to 100, gives you an archetype, gets your own agent to roast you for it, and saves the result as an image in the folder you ran it from, ready to post.
 
-<p align="center"><img src="https://raw.githubusercontent.com/jjinendra3/amidumb/master/docs/card.png" width="440" alt="An amidumb card: 83/100, Director, with a one-line roast, five sub-score bars, three reasons for the score, a rage meter and a secret-leak count"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/jjinendra3/amidumb/master/docs/card.png" width="440" alt="An amidumb card: 83/100, Micromanager, with a one-line roast, five sub-score bars, three reasons for the score, a rage meter and a secret-leak count"></p>
 
 ## What you get
 
 - **Direction score** (0–100) with five sub-scores: specification, steering, verification, discipline and leverage.
-- **Archetype**: Staff Engineer, Architect, Director, Backseat Driver, Rubber Stamper, Slot-Machine Vibecoder, Error Paster…
+- **A title**, one for every 5 points of your score, from Hostage to Agent's Worst Nightmare. Every one of them is a roast.
 - **The roast**: a one-line verdict and three reasons for your score, written by your own `claude` or `codex`. Every reason has to cite prompts from what was sent; reasons that cite prompts that don't exist are thrown out.
 - **A shareable card**: `amidumb-YYYY-MM-DD.png` (1080×1350) saved where you ran it, and opened for you.
 - **Rage meter**: prompts with swearing, CAPS LOCK or `!!!`.
@@ -23,7 +23,7 @@ amidumb reads your Claude Code and Codex transcripts, scores how you direct the 
 ## Privacy
 
 - **The score is computed on your machine.** amidumb reads `~/.claude/projects` and `~/.codex/sessions` and runs no servers, no telemetry and no network calls of its own.
-- **The roast runs on your own CLI.** It sends about 150 of your prompts to *your own* `claude` or `codex` CLI, on your own plan, and prints one line saying exactly that before it does. `--no-roast` skips it. Each prompt goes with the agent message before it, cut to 300 characters. Tool output and the files the agent read or wrote are never sent, only what you typed and what the agent said.
+- **The roast runs on your own CLI.** It sends about 150 of your prompts to *your own* `claude` CLI (or `codex` with `--codex`, or when Claude Code isn't installed), on your own plan, and prints one line saying exactly that before it does. If that CLI isn't logged in, it says so and skips the roast. `--no-roast` skips it. Each prompt goes with the agent message before it, cut to 300 characters. Tool output and the files the agent read or wrote are never sent, only what you typed and what the agent said.
 - **Secrets are redacted before anything is sent**: private keys, AWS, GitHub, Anthropic, OpenAI, Stripe, Slack, Google and npm keys, JWTs, and `password=`-style assignments.
 - **`--dry-run`** prints exactly what would be sent, and sends nothing.
 - **The judge runs ephemeral** (`claude --no-session-persistence` with no tools, `codex exec --ephemeral` in a read-only sandbox), from an empty folder, so it never ends up in the transcripts it judges.
@@ -60,23 +60,36 @@ Each sub-score is computed per session, then averaged with every session weighte
 | Steering | 20% | good steering (approvals after a proposal, corrections, interrupts) against bad (bare retries, runs of more than two nudges). A 30% good share scores 0 and 85% or more scores 100. Skipped when there was nothing to steer |
 | Verification | 20% | 100 if you asked for tests, a review or the diff, or reported what you saw when you ran it; 60 if only the agent ran tests, lint or a typecheck; 0 if nobody checked. Skipped when no code changed (plans, docs and agent memory don't count) |
 | Discipline | 20% | starts at 100 and loses points for bare retries and error pastes (150 × their share), runs of more than two nudges, prompts in bypass-permissions mode, and rage |
-| Leverage | 10% | for you as a whole: global instructions (35), projects with a `CLAUDE.md` or `AGENTS.md` (up to 35), three or more skills or commands (15), hooks (15) |
+| Leverage | 10% | for you as a whole, across Claude Code and Codex: global instructions (35), projects with a `CLAUDE.md` or `AGENTS.md` (up to 35), three or more skills, commands or custom prompts (15), hooks (15) |
 
 A sub-score that doesn't apply is left out and the other weights are rescaled, so Codex users aren't scored on signals Codex doesn't record. You need at least 5 sessions with two or more prompts, and 30 prompts in total. By default it reads all the history on disk; `--days 30` scores just the last month. Claude Code deletes transcripts after 30 days unless you raise `cleanupPeriodDays` in its settings, so your Claude history may be shorter than you think.
 
 ### Archetypes
 
-The first rule that matches wins. How you work comes before how well:
+The title comes from your overall score alone, one for every 5 points. It's a ladder of who's in charge: at the bottom the agent runs you, at the top you run it too hard. None of them is a compliment, the top one included.
 
-| archetype | rule |
+| overall score | archetype |
 |---|---|
-| Error Paster | 15% or more of your prompts are pasted errors |
-| Slot-Machine Vibecoder | 25% or more are retries or nudges, and Specification is under 45 |
-| Backseat Driver | 25 or more interrupts per 100 prompts, or 25% or more of prompts are corrections |
-| Staff Engineer | overall 80+, Verification 70+ and Steering 60+ |
-| Architect | Specification 75+ |
-| Rubber Stamper | 30% or more are approvals or nudges |
-| Director / Mid Vibes / Passenger | overall 60+ / 40+ / below 40 |
+| 95–100 | Agent's Worst Nightmare |
+| 90–94 | Trust Issues |
+| 85–89 | Control Freak |
+| 80–84 | Micromanager |
+| 75–79 | Backseat Driver |
+| 70–74 | Hall Monitor |
+| 65–69 | Professional Delegator |
+| 60–64 | Middle Manager |
+| 55–59 | Reluctant Manager |
+| 50–54 | Part-Time Boss |
+| 45–49 | Cc'd on Everything |
+| 40–44 | Mid Vibes |
+| 35–39 | Along for the Ride |
+| 30–34 | Vibe Tourist |
+| 25–29 | Spectator |
+| 20–24 | Passenger |
+| 15–19 | Agent's Assistant |
+| 10–14 | Intern's Intern |
+| 5–9 | Human Clipboard |
+| 0–4 | Hostage |
 
 ## How well does it work?
 
@@ -106,7 +119,7 @@ amidumb survey [options]     record kinds and keys in your transcripts (no conte
 --json             numbers only, no text, titles or paths: safe to share
 --no-roast         score and card only, nothing is sent anywhere
 --dry-run          print exactly what the roast would send, and send nothing
---judge <cli>      claude or codex (default: the first one installed)
+--codex            roast with your codex CLI instead of claude
 --no-open          save the card image without opening it
 --claude-dir <p>   Claude Code transcripts (default ~/.claude/projects)
 --codex-dir <p>    Codex transcripts (default ~/.codex/sessions)

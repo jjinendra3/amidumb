@@ -1,5 +1,5 @@
 import { accessSync, constants, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import crossSpawn from 'cross-spawn';
 import { JUDGE_JSON_SCHEMA, JudgeError } from './schema';
@@ -16,6 +16,11 @@ const CLAUDE_BRIEF = 'Follow the instructions in the input and reply with the JS
 /** The judge only reads the prompt; it gets no tools. */
 const CLAUDE_DENIED_TOOLS =
   'Bash Edit Write Read Glob Grep WebFetch WebSearch Task Agent NotebookEdit TodoWrite';
+const LOGIN_CHECK: Record<JudgeCli, readonly string[]> = {
+  claude: ['auth', 'status'],
+  codex: ['login', 'status'],
+};
+const LOGIN_TIMEOUT_MS = 10_000;
 const UPDATE_HINT: Record<JudgeCli, string> = {
   claude: 'run `claude update`',
   codex: 'update it the way you installed it, e.g. `npm i -g @openai/codex@latest`',
@@ -71,7 +76,7 @@ export function detectJudge(env: NodeJS.ProcessEnv = process.env): JudgeCli | un
   return JUDGE_CLIS.find((cli) => onPath(cli, env));
 }
 
-function onPath(name: string, env: NodeJS.ProcessEnv): boolean {
+export function onPath(name: string, env: NodeJS.ProcessEnv = process.env): boolean {
   const exts = process.platform === 'win32' ? ['.cmd', '.exe', ''] : [''];
   for (const dir of (env.PATH ?? env.Path ?? '').split(delimiter)) {
     for (const ext of exts) {
@@ -82,6 +87,39 @@ function onPath(name: string, env: NodeJS.ProcessEnv): boolean {
     }
   }
   return false;
+}
+
+/**
+ * True only when the CLI says it isn't logged in. Anything else (an older CLI without the
+ * status command, a timeout, a key or provider the status command doesn't know about) lets
+ * the judge run and fail with the CLI's own message, rather than blocking a setup that works.
+ */
+export async function loggedOut(
+  cli: JudgeCli,
+  exec: Exec = runProcess,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<boolean> {
+  // `codex login status` says "Not logged in" even when `codex exec` would run on an
+  // API key from the environment or a model provider set in config.toml.
+  if (cli === 'codex' && (env.CODEX_API_KEY || env.OPENAI_API_KEY || codexHasProvider(env))) {
+    return false;
+  }
+  const res = await exec(cli, LOGIN_CHECK[cli], {
+    input: '',
+    cwd: tmpdir(),
+    timeoutMs: LOGIN_TIMEOUT_MS,
+  });
+  if (res.timedOut || res.code === 0 || res.code === null) return false;
+  return /"loggedIn"\s*:\s*false|not logged in/i.test(`${res.stdout}\n${res.stderr}`);
+}
+
+function codexHasProvider(env: NodeJS.ProcessEnv): boolean {
+  const home = env.CODEX_HOME ?? join(homedir(), '.codex');
+  try {
+    return /^\s*model_provider\s*=/m.test(readFileSync(join(home, 'config.toml'), 'utf8'));
+  } catch {
+    return false;
+  }
 }
 
 /**

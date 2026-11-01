@@ -59,7 +59,7 @@ export function renderCard(input: CardInput): string {
     const value = sub ? String(sub.score).padStart(3) : '  –';
     const filled = sub ? Math.round((sub.score / 100) * BAR) : 0;
     body.push(
-      `${id.padEnd(LABEL)}${value}  ${tone('█'.repeat(filled))}${c.dim('░'.repeat(BAR - filled))}`,
+      `${id.padEnd(LABEL)}${value}  ${tone('━'.repeat(filled))}${c.dim('─'.repeat(BAR - filled))}`,
     );
   }
 

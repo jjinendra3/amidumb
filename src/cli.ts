@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 import { version } from '../package.json';
 import { JUDGING_CAPTIONS } from './judge/captions';
 import { roast } from './judge/flow';
-import { JUDGE_CLIS, type JudgeCli } from './judge/run';
+import type { JudgeCli } from './judge/run';
 import { buildSample } from './judge/sample';
 import { JudgeError, type Verdict } from './judge/schema';
 import { labelsPath, loadLabels } from './label/store';
@@ -39,7 +39,7 @@ Options
   --json             numbers only, no text, titles or paths: safe to share
   --no-roast         score and card only, nothing is sent anywhere
   --dry-run          print exactly what the roast would send, and send nothing
-  --judge <cli>      claude or codex (default: the first one installed)
+  --codex            roast with your codex CLI instead of claude
   --no-open          save the card image without opening it
   --limit <n>        label: sessions per run (default 40)
   --relabel          label: include sessions you already labelled
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       relabel: { type: 'boolean' },
       'no-roast': { type: 'boolean' },
       'dry-run': { type: 'boolean' },
-      judge: { type: 'string' },
+      codex: { type: 'boolean' },
       'no-open': { type: 'boolean' },
       'claude-dir': { type: 'string' },
       'codex-dir': { type: 'string' },
@@ -113,11 +113,11 @@ async function report(
     sample?: string;
     'no-roast'?: boolean;
     'dry-run'?: boolean;
-    judge?: string;
+    codex?: boolean;
     'no-open'?: boolean;
   },
 ): Promise<void> {
-  const judge = parseJudge(values.judge);
+  const judge: JudgeCli | undefined = values.codex ? 'codex' : undefined;
   const debug = Boolean(values.raw || values.sessions || values.sample);
   // The plain run is the show: nothing printed until the reveal.
   const show = !values.json && !debug;
@@ -243,12 +243,6 @@ async function saveImage(card: CardInput, open: boolean): Promise<void> {
   }
   console.log(`\ncard saved to ./${file}`);
   if (open && process.stdout.isTTY) openFile(path);
-}
-
-function parseJudge(value: string | undefined): JudgeCli | undefined {
-  if (value === undefined) return undefined;
-  if ((JUDGE_CLIS as readonly string[]).includes(value)) return value as JudgeCli;
-  throw new UsageError(`--judge must be one of: ${JUDGE_CLIS.join(', ')}`);
 }
 
 async function label(

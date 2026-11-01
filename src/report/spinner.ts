@@ -1,5 +1,8 @@
-// A one-line spinner with rotating captions. Draws only on a TTY; elsewhere it prints
-// nothing and just waits, so logs and pipes stay clean.
+import pc from 'picocolors';
+
+// A spinner with rotating captions: a blank line above it, the caption, and the elapsed
+// time on the line below. Draws only on a TTY; elsewhere it prints nothing and just waits,
+// so logs and pipes stay clean.
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -24,21 +27,27 @@ export async function withSpinner<T>(task: Promise<T>, opts: SpinnerOptions): Pr
   let elapsed = 0;
   const started = Date.now();
 
+  // Each draw writes the caption line, steps down to the timer line, and steps back up.
   const draw = () => {
     const seconds = Math.floor((Date.now() - started) / 1000);
-    const line = `${FRAMES[frame % FRAMES.length]} ${captions[caption % captions.length]}… ${seconds}s`;
+    const line = `${FRAMES[frame % FRAMES.length]} ${captions[caption % captions.length]}…`;
     const width = (stream.columns ?? 80) - 1;
-    stream.write(`\r\x1b[K${line.slice(0, width)}`);
+    stream.write(
+      `\r\x1b[K${line.slice(0, width)}\x1b[1B\r\x1b[K${pc.dim(`  ${seconds}s`)}\x1b[1A\r`,
+    );
   };
 
-  const restore = () => stream.write('\r\x1b[K\x1b[?25h');
+  // Clears both lines and leaves the cursor on the blank line, so what's printed next
+  // lands right where the spinner started.
+  const restore = () => stream.write('\r\x1b[K\x1b[1B\r\x1b[K\x1b[2A\r\x1b[?25h');
   // Ctrl-C skips `finally`: give the cursor back before exiting.
   const onSigint = () => {
     restore();
     process.exit(130);
   };
   process.once('SIGINT', onSigint);
-  stream.write('\x1b[?25l');
+  // Hide the cursor, leave the blank line, and make room for the timer line.
+  stream.write('\x1b[?25l\n\n\x1b[1A');
   draw();
   const timer = setInterval(() => {
     frame++;

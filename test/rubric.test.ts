@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { pickArchetype } from '../src/score/archetypes';
-import { combine, hasEnoughData, ramp, scoreSession, scoreUser } from '../src/score/rubric';
+import { ARCHETYPES, pickArchetype } from '../src/score/archetypes';
+import {
+  combine,
+  hasEnoughData,
+  ramp,
+  scoreLeverage,
+  scoreSession,
+  scoreUser,
+} from '../src/score/rubric';
 import type { Leverage } from '../src/signals/leverage';
 import { computeSessionSignals } from '../src/signals/session';
 import { TURN_CLASSES } from '../src/signals/turns';
@@ -12,10 +19,28 @@ const leverage: Leverage = {
   claudeSkills: 0,
   claudeCommands: 0,
   claudeHooks: false,
+  codexSkills: 0,
+  codexPrompts: 0,
+  codexHooks: false,
   projectsWithInstructions: 0,
   projectsChecked: 0,
   projectsMissing: 0,
 };
+
+describe('scoreLeverage', () => {
+  it('counts Codex skills, prompts and hooks the same as Claude ones', () => {
+    const claude = scoreLeverage({
+      ...leverage,
+      claudeSkills: 2,
+      claudeCommands: 1,
+      claudeHooks: true,
+    });
+    expect(claude).toBe(30);
+    expect(scoreLeverage({ ...leverage, codexSkills: 2, codexPrompts: 1, codexHooks: true })).toBe(
+      claude,
+    );
+  });
+});
 
 describe('ramp', () => {
   it('maps and clamps in both directions', () => {
@@ -126,16 +151,23 @@ describe('pickArchetype', () => {
   >;
   const base = { overall: 50, sub: {}, share, interruptsPer100: 0 };
 
-  it('puts behaviour archetypes before level archetypes', () => {
-    expect(pickArchetype({ ...base, overall: 90, share: { ...share, error_paste: 0.2 } }).id).toBe(
-      'error-paster',
-    );
+  it('names a band for every 5 points, 0-4 up to 95-100', () => {
+    const at = (overall: number) => pickArchetype({ ...base, overall }).id;
+    const fromBottom = ARCHETYPES.map((a) => a.id).reverse();
+    expect(fromBottom).toHaveLength(20);
+    fromBottom.forEach((id, i) => {
+      expect(at(i * 5)).toBe(id);
+      expect(at(i * 5 + 4)).toBe(id);
+    });
+    expect(at(100)).toBe(fromBottom.at(-1));
+    expect(new Set(ARCHETYPES.map((a) => a.name)).size).toBe(20);
   });
 
-  it('falls back by overall score', () => {
-    expect(pickArchetype({ ...base, overall: 65 }).id).toBe('director');
-    expect(pickArchetype({ ...base, overall: 45 }).id).toBe('mid-vibes');
-    expect(pickArchetype({ ...base, overall: 10 }).id).toBe('passenger');
+  it('ignores how you work: only the overall score picks the title', () => {
+    const pasting = { ...share, error_paste: 0.5, retry: 0.4 };
+    expect(pickArchetype({ ...base, overall: 85, share: pasting, interruptsPer100: 90 }).id).toBe(
+      'control-freak',
+    );
   });
 });
 

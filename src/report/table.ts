@@ -71,6 +71,7 @@ export function renderLeverage(l: Leverage): string {
     'setup',
     `  global CLAUDE.md: ${yes(l.claudeGlobalInstructions)}   global Codex AGENTS.md: ${yes(l.codexGlobalInstructions)}`,
     `  claude skills: ${l.claudeSkills}   commands: ${l.claudeCommands}   hooks: ${yes(l.claudeHooks)}`,
+    `  codex skills: ${l.codexSkills}   prompts: ${l.codexPrompts}   hooks: ${yes(l.codexHooks)}`,
     `  projects with CLAUDE.md/AGENTS.md: ${l.projectsWithInstructions}/${l.projectsChecked}` +
       (l.projectsMissing ? ` (${l.projectsMissing} no longer on disk)` : ''),
   ].join('\n');

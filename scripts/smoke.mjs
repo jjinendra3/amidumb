@@ -58,6 +58,11 @@ writeFileSync(
   join(bin, 'fake-judge.mjs'),
   `import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 const [cli, ...args] = process.argv.slice(2);
+if (args.join(' ') === (cli === 'claude' ? 'auth status' : 'login status')) {
+  const out = process.env.FAKE_JUDGE_LOGGED_OUT === '1';
+  process.stdout.write(cli === 'claude' ? JSON.stringify({ loggedIn: !out }) : out ? 'Not logged in' : 'Logged in using ChatGPT');
+  process.exit(out ? 1 : 0);
+}
 const bad = args.find((a) => (process.env.FAKE_JUDGE_REJECT || '').split(',').includes(a));
 if (bad) {
   process.stderr.write(cli === 'claude' ? "error: unknown option '" + bad + "'\\n" : "error: unexpected argument '" + bad + "' found\\n");
@@ -106,9 +111,10 @@ for (const name of ['claude', 'codex']) {
 const pathKey = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
 const SCENARIOS = [
   { name: 'claude, found on PATH', args: [], reject: '' },
-  { name: 'claude, older CLI', args: ['--judge', 'claude'], reject: '--safe-mode,--no-session-persistence,--json-schema' },
-  { name: 'codex', args: ['--judge', 'codex'], reject: '' },
-  { name: 'codex, older CLI', args: ['--judge', 'codex'], reject: '--ephemeral,--output-schema,--color' },
+  { name: 'claude, older CLI', args: [], reject: '--safe-mode,--no-session-persistence,--json-schema' },
+  { name: 'codex', args: ['--codex'], reject: '' },
+  { name: 'codex, older CLI', args: ['--codex'], reject: '--ephemeral,--output-schema,--color' },
+  { name: 'claude, logged out', args: [], reject: '', loggedOut: true },
 ];
 
 let failed = 0;
@@ -122,20 +128,26 @@ for (const scenario of SCENARIOS) {
     {
       cwd,
       encoding: 'utf8',
-      env: { ...process.env, [pathKey]: bin + delimiter + process.env[pathKey], FAKE_JUDGE_REJECT: scenario.reject, FAKE_JUDGE_LOG: log },
+      env: { ...process.env, [pathKey]: bin + delimiter + process.env[pathKey], FAKE_JUDGE_REJECT: scenario.reject, FAKE_JUDGE_LOG: log, FAKE_JUDGE_LOGGED_OUT: scenario.loggedOut ? '1' : '' },
     },
   );
   const calls = readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
   const png = readdirSync(cwd).find((f) => /^amidumb-\d{4}-\d\d-\d\d\.png$/.test(f));
   const image = png ? readFileSync(join(cwd, png)) : undefined;
-  const checks = [
+  const savedPng = Boolean(image && image.subarray(1, 4).toString() === 'PNG' && image.readUInt32BE(16) === 1080 && image.readUInt32BE(20) === 1350);
+  const checks = scenario.loggedOut ? [
+    ['exits 0', run.status === 0],
+    ['says the CLI is logged out', /your claude CLI isn't logged in/.test(run.stderr)],
+    ['sends nothing', calls.length === 0 && !/sending/.test(run.stderr)],
+    ['saves a 1080x1350 PNG', savedPng],
+  ] : [
     ['exits 0', run.status === 0],
     ['says what it sends', /sending \d+ redacted prompts .* to your (claude|codex) CLI/.test(run.stderr)],
     ['judge got intact args', calls.length > 0 && calls.every((c) => c.problems.length === 0)],
     ['shows the verdict', run.stdout.includes('Smoke judge verdict.')],
     ['keeps grounded points', run.stdout.includes('Smoke point one.') && run.stdout.includes('Smoke point two.')],
     ['drops the invented point', !run.stdout.includes('Invented point.')],
-    ['saves a 1080x1350 PNG', Boolean(image && image.subarray(1, 4).toString() === 'PNG' && image.readUInt32BE(16) === 1080 && image.readUInt32BE(20) === 1350)],
+    ['saves a 1080x1350 PNG', savedPng],
   ];
   const bad = checks.filter(([, ok]) => !ok);
   console.log(`${bad.length ? '✗' : '✓'} ${scenario.name}${bad.length ? `: ${bad.map(([n]) => n).join(', ')}` : ''}`);

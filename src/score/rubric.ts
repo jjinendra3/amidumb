@@ -139,8 +139,8 @@ export function scoreLeverage(l: Leverage): number {
   return Math.round(
     (l.claudeGlobalInstructions || l.codexGlobalInstructions ? 35 : 0) +
       (35 * ramp(projectShare, 0, 0.6)) / 100 +
-      (l.claudeSkills + l.claudeCommands >= 3 ? 15 : 0) +
-      (l.claudeHooks ? 15 : 0),
+      (l.claudeSkills + l.claudeCommands + l.codexSkills + l.codexPrompts >= 3 ? 15 : 0) +
+      (l.claudeHooks || l.codexHooks ? 15 : 0),
   );
 }
 
@@ -213,7 +213,7 @@ export function scoreUser(
       scoreLeverage(leverage),
       `${leverage.claudeGlobalInstructions || leverage.codexGlobalInstructions ? 'global instructions' : 'no global instructions'}, ` +
         `${leverage.projectsWithInstructions}/${leverage.projectsChecked} projects with CLAUDE.md/AGENTS.md, ` +
-        `${leverage.claudeSkills} skills, ${leverage.claudeHooks ? 'hooks' : 'no hooks'}`,
+        `${leverage.claudeSkills + leverage.codexSkills} skills, ${leverage.claudeHooks || leverage.codexHooks ? 'hooks' : 'no hooks'}`,
     ],
   };
 

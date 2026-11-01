@@ -1,9 +1,12 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { aggregate } from '../src/signals/aggregate';
+import { readLeverage } from '../src/signals/leverage';
 import { computeSessionSignals } from '../src/signals/session';
 import { clipToWindow } from '../src/sources';
 import { stripInjected } from '../src/sources/context';
-import { prompt, session } from './helpers';
+import { prompt, session, tempRoot } from './helpers';
 
 describe('stripInjected', () => {
   it('removes IDE tags and the Codex IDE wrapper', () => {
@@ -108,5 +111,38 @@ describe('clipToWindow', () => {
       'undated',
     ]);
     expect(clipped.startedAt).toBe(10);
+  });
+});
+
+describe('readLeverage', () => {
+  it('counts Codex skills, prompts and hooks, but not its built-in skills', () => {
+    const codex = tempRoot();
+    for (const dir of ['skills/review', 'skills/deploy', 'skills/.system', 'prompts']) {
+      mkdirSync(join(codex, dir), { recursive: true });
+    }
+    writeFileSync(join(codex, 'prompts', 'plan.md'), '');
+    writeFileSync(join(codex, 'hooks.json'), JSON.stringify({ hooks: { Stop: [] } }));
+    const l = readLeverage([], { CODEX_HOME: codex, CLAUDE_CONFIG_DIR: tempRoot() });
+    expect(l).toMatchObject({
+      codexSkills: 2,
+      codexPrompts: 1,
+      codexHooks: true,
+      claudeHooks: false,
+    });
+  });
+
+  it('finds Codex hooks declared in config.toml', () => {
+    const codex = tempRoot();
+    writeFileSync(
+      join(codex, 'config.toml'),
+      'model = "x"\n\n[[hooks.Stop]]\ncommand = "say done"\n',
+    );
+    expect(readLeverage([], { CODEX_HOME: codex, CLAUDE_CONFIG_DIR: tempRoot() }).codexHooks).toBe(
+      true,
+    );
+    writeFileSync(join(codex, 'config.toml'), 'model = "x"\n');
+    expect(readLeverage([], { CODEX_HOME: codex, CLAUDE_CONFIG_DIR: tempRoot() }).codexHooks).toBe(
+      false,
+    );
   });
 });

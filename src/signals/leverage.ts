@@ -9,6 +9,10 @@ export interface Leverage {
   claudeSkills: number;
   claudeCommands: number;
   claudeHooks: boolean;
+  codexSkills: number;
+  /** Custom prompts, Codex's older take on commands. */
+  codexPrompts: number;
+  codexHooks: boolean;
   /** Distinct session working directories with a CLAUDE.md or AGENTS.md. */
   projectsWithInstructions: number;
   projectsChecked: number;
@@ -43,6 +47,10 @@ export function readLeverage(
     claudeSkills: countEntries(join(claudeHome, 'skills')),
     claudeCommands: countEntries(join(claudeHome, 'commands')),
     claudeHooks: hasHooks(join(claudeHome, 'settings.json')),
+    codexSkills: countEntries(join(codexHome, 'skills')),
+    codexPrompts: countEntries(join(codexHome, 'prompts')),
+    codexHooks:
+      hasHooks(join(codexHome, 'hooks.json')) || hasHookTable(join(codexHome, 'config.toml')),
     projectsWithInstructions,
     projectsChecked,
     projectsMissing,
@@ -54,6 +62,15 @@ function countEntries(dir: string): number {
     return readdirSync(dir).filter((name) => !name.startsWith('.')).length;
   } catch {
     return 0;
+  }
+}
+
+/** Codex can also declare hooks as `[hooks...]` tables in config.toml. */
+function hasHookTable(configFile: string): boolean {
+  try {
+    return /^\s*\[\[?hooks[.\]]/m.test(readFileSync(configFile, 'utf8'));
+  } catch {
+    return false;
   }
 }
 
