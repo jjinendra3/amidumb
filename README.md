@@ -16,8 +16,8 @@ npx amidumb
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jjinendra3/amidumb/master/docs/demo.gif" width="400" alt="A terminal running npx amidumb: it reads the transcripts, sends a redacted sample to the claude CLI, and prints a card with the score, title, roast and sub-scores">
-  <img src="https://raw.githubusercontent.com/jjinendra3/amidumb/master/docs/card.png" width="400" alt="An amidumb card: 83/100, Micromanager, with a one-line roast, five sub-score bars, three reasons for the score, a rage meter and a secret-leak count">
+  <img src="https://raw.githubusercontent.com/jjinendra3/amidumb/master/docs/demo.gif" width="49%" alt="A terminal running npx amidumb: it reads the transcripts, sends a redacted sample to the claude CLI, and prints a card with the score, title, roast and sub-scores">
+  <img src="https://raw.githubusercontent.com/jjinendra3/amidumb/master/docs/card.png" width="49%" alt="An amidumb card: 83/100, Micromanager, with a one-line roast, five sub-score bars, three reasons for the score, a rage meter and a secret-leak count">
 </p>
 
 amidumb reads your Claude Code and Codex history on your machine, scores how well you direct the agent from 0 to 100, gives you a title for it, gets your own `claude` to roast you, and saves a card you can post. One command, no sign-up, no API key, and the score never leaves your machine.
